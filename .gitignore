@@ -1,0 +1,6 @@
+.DS_Store
+.edwin
+.env
+/.cargo/
+/target
+db.*
