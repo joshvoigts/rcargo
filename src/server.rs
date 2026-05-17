@@ -53,22 +53,41 @@ pub fn run_server(
     ),
   )?;
 
+  let host = crate::REMOTE_HOST;
   let server_bin = format!(
     "{}/target/release/edwin-server",
     crate::REMOTE_REPO_PATH
   );
   let pid_file = crate::REMOTE_PID_FILE;
+  let log_file = format!("{pid_file}.log");
 
-  // Run server in background and write PID
+  // Run server in background, write output to log file
   ssh::ssh_run(
-    crate::REMOTE_HOST,
+    host,
     &format!(
-      "nohup {server_bin} > /dev/null 2>&1 & echo $! > {pid_file}"
+      "nohup {server_bin} >> {log_file} 2>&1 & echo $! > {pid_file}"
     ),
   )?;
 
-  let pid =
-    ssh_capture(crate::REMOTE_HOST, &format!("cat {pid_file}"))?;
-  println!("Server started on remote with PID {pid}.");
+  let pid = ssh_capture(host, &format!("cat {pid_file}"))?;
+
+  // Brief pause then check if process is still alive
+  std::thread::sleep(std::time::Duration::from_secs(2));
+
+  let result = ssh_capture(
+    host,
+    &format!("kill -0 {pid} 2>/dev/null && echo running"),
+  );
+
+  if matches!(&result, Ok(s) if s == "running") {
+    println!("Server started on remote with PID {pid}.");
+  } else {
+    // Process died — show the log for debugging
+    if let Ok(log) = ssh_capture(host, &format!("cat {log_file}")) {
+      eprintln!("Server exited unexpectedly. Log:\n{log}");
+    }
+    return Err("Server process died after starting.".into());
+  }
+
   Ok(())
 }
