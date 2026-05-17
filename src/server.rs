@@ -62,7 +62,9 @@ pub fn run_server(
   // Run server in background and write PID
   ssh::ssh_run(
     crate::REMOTE_HOST,
-    &format!("{server_bin} > /dev/null 2>&1 & echo $! > {pid_file}"),
+    &format!(
+      "nohup {server_bin} > /dev/null 2>&1 & echo $! > {pid_file}"
+    ),
   )?;
 
   let pid =

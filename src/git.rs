@@ -1,4 +1,7 @@
-use crate::ssh::{self, ssh_capture};
+use crate::{
+  ssh::{self, ssh_capture},
+  REMOTE_HOST,
+};
 
 /// Ensure the repo exists on the remote. Clones it if it doesn't.
 pub fn ensure_repo(
@@ -53,7 +56,7 @@ pub fn checkout_branch(
 /// Get the remote origin URL from the local git repo.
 fn get_local_origin() -> Result<String, Box<dyn std::error::Error>> {
   let output = std::process::Command::new("git")
-    .args(["remote", "get-url", "deploy"])
+    .args(["remote", "get-url", REMOTE_HOST])
     .output()?;
 
   if !output.status.success() {

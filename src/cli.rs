@@ -13,12 +13,14 @@ pub enum Command {
   Build {
     #[arg(value_enum)]
     target: BuildTarget,
-    #[arg(long, default_value = "main")]
+    #[arg(long, default_value = "acp")]
     branch: String,
   },
   /// Build and run the server on the remote
   Run {
-    #[arg(long, default_value = "main")]
+    #[arg(value_enum)]
+    target: BuildTarget,
+    #[arg(long, default_value = "acp")]
     branch: String,
   },
   /// Stop the running server on the remote

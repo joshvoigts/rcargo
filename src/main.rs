@@ -6,9 +6,10 @@ mod ssh;
 use clap::Parser;
 use cli::{App, BuildTarget, Command};
 
-const REMOTE_HOST: &str = "deploy";
+const REMOTE_HOST: &str = "edwin";
 const REMOTE_REPO_PATH: &str = "/home/josh/build/edwin";
-const REMOTE_PID_FILE: &str = "/home/josh/build/edwin/edwin-server.pid";
+const REMOTE_PID_FILE: &str =
+  "/home/josh/build/edwin/edwin-server.pid";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
   let app = App::parse();
@@ -18,7 +19,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       BuildTarget::Server => build_server(&branch)?,
       BuildTarget::Cli => build_cli(&branch)?,
     },
-    Command::Run { branch } => server::run_server(&branch)?,
+    Command::Run { target, branch } => match target {
+      BuildTarget::Server => server::run_server(&branch)?,
+      BuildTarget::Cli => panic!("Unimplemented"),
+    },
     Command::Stop => server::stop_server()?,
   }
 
