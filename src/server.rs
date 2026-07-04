@@ -48,7 +48,7 @@ pub fn run_server(
   ssh::ssh_run(
     crate::REMOTE_HOST,
     &format!(
-      "cd {} && cargo build --release -p edwin-server",
+      "cd {} && DATABASE_URL=sqlite://db.sqlite3 cargo build --release -p edwin-server",
       crate::REMOTE_REPO_PATH
     ),
   )?;
@@ -65,7 +65,8 @@ pub fn run_server(
   ssh::ssh_run(
     host,
     &format!(
-      "nohup {server_bin} >> {log_file} 2>&1 & echo $! > {pid_file}"
+      "cd {work_dir} && nohup DATABASE_URL=sqlite://db.sqlite3 {server_bin} >> {log_file} 2>&1 & echo $! > {pid_file}",
+      work_dir = crate::REMOTE_REPO_PATH
     ),
   )?;
 
