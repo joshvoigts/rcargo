@@ -15,10 +15,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let app = App::parse();
 
   match app.cmd {
-    Command::Build { target, branch } => match target {
-      BuildTarget::Server => build_server(&branch)?,
-      BuildTarget::Cli => build_cli(&branch)?,
-    },
+    Command::Build { target, branch } => {
+      let package = match target {
+        BuildTarget::Server => "edwin-server",
+        BuildTarget::Cli => "edwin-cli",
+      };
+      build_remote(&branch, package)?;
+    }
     Command::Run { target, branch } => match target {
       BuildTarget::Server => server::run_server(&branch)?,
       BuildTarget::Cli => panic!("Unimplemented"),
@@ -29,39 +32,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   Ok(())
 }
 
-fn build_server(
+fn build_remote(
   branch: &str,
+  package: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
   git::ensure_repo(REMOTE_HOST)?;
   git::checkout_branch(REMOTE_HOST, branch)?;
   ssh::ssh_run(
     REMOTE_HOST,
     &format!(
-      "cd {} && cargo build --release -p edwin-server",
+      "cd {} && cargo build --release -p {package}",
       REMOTE_REPO_PATH
     ),
   )?;
-  println!("edwin-server built successfully on remote.");
-  Ok(())
-}
-
-fn build_cli(branch: &str) -> Result<(), Box<dyn std::error::Error>> {
-  git::ensure_repo(REMOTE_HOST)?;
-  git::checkout_branch(REMOTE_HOST, branch)?;
-  ssh::ssh_run(
-    REMOTE_HOST,
-    &format!(
-      "cd {} && cargo build --release -p edwin-cli",
-      REMOTE_REPO_PATH
-    ),
-  )?;
-
   std::fs::create_dir_all("builds")?;
   ssh::scp_from(
     REMOTE_HOST,
-    &format!("{}/target/release/edwin-cli", REMOTE_REPO_PATH),
-    "builds/edwin-cli",
+    &format!("{}/target/release/{package}", REMOTE_REPO_PATH),
+    &format!("builds/{package}"),
   )?;
-  println!("edwin-cli copied to ./builds/edwin-cli");
+  println!("{package} copied to ./builds/{package}");
   Ok(())
 }
