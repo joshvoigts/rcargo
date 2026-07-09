@@ -12,9 +12,23 @@ use std::error::Error;
 fn main() -> Result<(), Box<dyn Error>> {
   let app = App::parse();
 
-  let mut cfg = Config::load()?;
+  let mut cfg = match Config::load() {
+    Ok(c) => c,
+    Err(_) => Config {
+      target: String::new(),
+      remote_path: None,
+    },
+  };
+
   if let Some(target) = app.target {
     cfg.target = target;
+  }
+
+  if cfg.target.is_empty() {
+    return Err(
+      "No target specified. Provide --target flag or create deploy.toml with: target = \"your-server\""
+        .into(),
+    );
   }
 
   let package_name = detect_package_name()?;
