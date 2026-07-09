@@ -1,78 +1,64 @@
 use crate::ssh::{self, ssh_capture};
 
-/// Stop the running server on the remote using the PID file.
-pub fn stop_server() -> Result<(), Box<dyn std::error::Error>> {
-  let host = crate::REMOTE_HOST;
-  let pid_file = crate::REMOTE_PID_FILE;
+pub fn stop_server(
+  host: &str,
+  remote_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+  let pid_file = format!("{remote_path}/deploy.pid");
 
-  // Check if PID file exists
   let result =
     ssh_capture(host, &format!("test -f {pid_file} && echo exists"));
   if !matches!(&result, Ok(s) if s == "exists") {
-    println!("No running server found (PID file does not exist).");
+    println!("No running process found");
     return Ok(());
   }
 
-  // Read PID
   let pid = ssh_capture(host, &format!("cat {pid_file}"))?;
   let pid: u32 = pid.parse()?;
 
-  // Check if process is running
   let result = ssh_capture(
     host,
     &format!("kill -0 {pid} 2>/dev/null && echo running"),
   );
   if matches!(&result, Ok(s) if s == "running") {
     ssh::ssh_run(host, &format!("kill {pid}"))?;
-    println!("Server (PID {pid}) stopped.");
+    println!("Process (PID {pid}) stopped");
   } else {
-    println!(
-      "Server (PID {pid}) is not running. Cleaning up PID file."
-    );
+    println!("Process (PID {pid}) is not running");
   }
 
-  // Remove PID file
   ssh::ssh_run(host, &format!("rm -f {pid_file}"))?;
   Ok(())
 }
 
-/// Run the server on the remote in the foreground.
 pub fn run_server(
+  host: &str,
+  remote_path: &str,
   branch: &str,
+  package_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  stop_server()?;
+  stop_server(host, remote_path)?;
 
-  crate::git::ensure_repo(crate::REMOTE_HOST)?;
-  crate::git::checkout_branch(crate::REMOTE_HOST, branch)?;
+  crate::git::sync_repo(host, remote_path, branch)?;
 
-  ssh::ssh_run(
-    crate::REMOTE_HOST,
-    &format!(
-      "cd {} && DATABASE_URL=sqlite://db.sqlite3 cargo build --release -p edwin-server",
-      crate::REMOTE_REPO_PATH
-    ),
-  )?;
+  println!("Building on remote...");
+  let cmd = format!("cd {remote_path} && cargo build --release");
+  ssh::ssh_run(host, &cmd)?;
 
-  let host = crate::REMOTE_HOST;
-  let server_bin = format!(
-    "{}/target/release/edwin-server",
-    crate::REMOTE_REPO_PATH
-  );
-  let pid_file = crate::REMOTE_PID_FILE;
+  let bin_path =
+    format!("{remote_path}/target/release/{package_name}");
+  let pid_file = format!("{remote_path}/deploy.pid");
   let log_file = format!("{pid_file}.log");
 
-  // Run server in background, write output to log file
   ssh::ssh_run(
     host,
     &format!(
-      "cd {work_dir} && nohup DATABASE_URL=sqlite://db.sqlite3 {server_bin} >> {log_file} 2>&1 & echo $! > {pid_file}",
-      work_dir = crate::REMOTE_REPO_PATH
+      "cd {remote_path} && nohup {bin_path} > {log_file} 2>&1 & echo $! > {pid_file}"
     ),
   )?;
 
   let pid = ssh_capture(host, &format!("cat {pid_file}"))?;
 
-  // Brief pause then check if process is still alive
   std::thread::sleep(std::time::Duration::from_secs(2));
 
   let result = ssh_capture(
@@ -81,13 +67,12 @@ pub fn run_server(
   );
 
   if matches!(&result, Ok(s) if s == "running") {
-    println!("Server started on remote with PID {pid}.");
+    println!("Process started with PID {pid}");
   } else {
-    // Process died — show the log for debugging
     if let Ok(log) = ssh_capture(host, &format!("cat {log_file}")) {
-      eprintln!("Server exited unexpectedly. Log:\n{log}");
+      eprintln!("Process exited unexpectedly. Log:\n{log}");
     }
-    return Err("Server process died after starting.".into());
+    return Err("Process failed to start".into());
   }
 
   Ok(())

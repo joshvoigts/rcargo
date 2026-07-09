@@ -1,49 +1,43 @@
-use std::fs;
 use std::process::Command;
 
 use crate::ssh::ssh_run;
 
-/// Ensure the remote working directory exists.
-pub fn ensure_repo(
+/// Sync the local repo to the remote via rsync.
+///
+/// Copies the working tree *and* `.git` so the remote has the same
+/// shape as the local repo (same branch, same unstaged changes).
+/// Gitignored paths are excluded so build artifacts, databases, etc.
+/// are untouched.
+pub fn sync_repo(
   host: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-  let work_dir = crate::REMOTE_REPO_PATH;
-  ssh_run(host, &format!("mkdir -p {work_dir}"))?;
-  Ok(())
-}
-
-/// Sync the local branch to the remote via rsync through a temporary archive.
-/// Excludes gitignored paths so build artifacts, databases, etc. are untouched.
-pub fn checkout_branch(
-  host: &str,
+  remote_path: &str,
   branch: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  let work_dir = crate::REMOTE_REPO_PATH;
-  let staging_dir = format!("/tmp/edwin-deploy-{branch}");
+  // Ensure rsync is available
+  let rsync_available = Command::new("rsync")
+    .arg("--version")
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .status()
+    .map(|s| s.success())
+    .unwrap_or(false);
 
-  // Clean up any leftover staging directory
-  let _ = fs::remove_dir_all(&staging_dir);
-  fs::create_dir_all(&staging_dir)?;
-
-  // Archive the branch into the staging directory
-  println!("Archiving branch '{branch}'...");
-  let status = Command::new("sh")
-    .args([
-      "-c",
-      &format!("git archive {branch} | tar -x -C {staging_dir}"),
-    ])
-    .status()?;
-  if !status.success() {
-    return Err("Failed to archive branch".into());
+  if !rsync_available {
+    return Err("rsync is required but not installed.".into());
   }
 
-  let mut rsync_args: Vec<String> = vec![
-    "-avz".into(),
-    "--delete".into(),
-    "--exclude-from=.gitignore".into(),
-  ];
-  rsync_args.push(format!("{staging_dir}/"));
-  rsync_args.push(format!("{host}:{work_dir}/"));
+  // Ensure remote directory exists
+  ssh_run(host, &format!("mkdir -p {remote_path}"))?;
+
+  let mut rsync_args: Vec<String> =
+    vec!["-avz".into(), "--delete".into()];
+
+  if std::path::Path::new(".gitignore").exists() {
+    rsync_args.push("--exclude-from=.gitignore".into());
+  }
+
+  rsync_args.push("./".into());
+  rsync_args.push(format!("{host}:{remote_path}/"));
 
   println!("Syncing to remote...");
   let status = Command::new("rsync").args(&rsync_args).status()?;
@@ -51,8 +45,24 @@ pub fn checkout_branch(
     return Err("rsync failed".into());
   }
 
-  // Clean up staging directory
-  let _ = fs::remove_dir_all(&staging_dir);
+  // Ensure the correct branch is checked out on the remote
+  println!("Checking out branch '{branch}' on remote...");
+  ssh_run(
+    host,
+    &format!("cd {remote_path} && git checkout {branch}"),
+  )?;
 
   Ok(())
+}
+
+/// Detect the current local branch name.
+pub fn current_branch() -> Result<String, Box<dyn std::error::Error>>
+{
+  let output = Command::new("git")
+    .args(["rev-parse", "--abbrev-ref", "HEAD"])
+    .output()?;
+  if !output.status.success() {
+    return Err("Failed to detect current branch".into());
+  }
+  Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }

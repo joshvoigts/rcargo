@@ -1,34 +1,26 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "edwin-deploy")]
+#[command(name = "deploy")]
 pub struct App {
   #[command(subcommand)]
   pub cmd: Command,
+
+  /// Override the target host from deploy.toml
+  #[arg(long, short)]
+  pub target: Option<String>,
+
+  /// Override the branch (defaults to current branch)
+  #[arg(long, short)]
+  pub branch: Option<String>,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
-  /// Build a target on the remote
-  Build {
-    #[arg(value_enum)]
-    target: BuildTarget,
-    #[arg(long, default_value = "acp")]
-    branch: String,
-  },
-  /// Build and run the server on the remote
-  Run {
-    #[arg(value_enum)]
-    target: BuildTarget,
-    #[arg(long, default_value = "acp")]
-    branch: String,
-  },
-  /// Stop the running server on the remote
+  /// Build on remote and copy binary back
+  Build,
+  /// Build and run on remote
+  Run,
+  /// Stop the running process on remote
   Stop,
-}
-
-#[derive(Clone, Copy, Debug, ValueEnum, PartialEq)]
-pub enum BuildTarget {
-  Server,
-  Cli,
 }
