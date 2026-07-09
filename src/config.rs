@@ -5,7 +5,7 @@ use std::path::Path;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
-  /// The target host to deploy to (e.g. "myserver.local" or "user@host")
+  /// The target host to deploy to (anything you'd pass to `ssh`)
   pub target: String,
 
   /// Remote path for the repo. Defaults to `$HOME/build/{project_name}`
@@ -22,7 +22,7 @@ impl Config {
       Some(p) => p,
       None => {
         return Err(
-          "No config file found. Create deploy.toml with:\ntarget = \"your-server\""
+          "No config file found. Create deploy.toml with:\ntarget = \"<ssh_target>\""
             .into(),
         );
       }

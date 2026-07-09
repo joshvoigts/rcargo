@@ -4,13 +4,13 @@ use clap::{Parser, Subcommand};
 #[command(
   name = "rdeploy",
   about = "Deploy or build rust projects on remote servers",
-  long_about = "A tool for deploying or building rust projects on remote servers.\n\nConfiguration via deploy.toml:\n  target = \"your-server\"  # SSH host to deploy to\n  remote_path = \"...\"     # Optional remote path (defaults to $HOME/build/{project_name})"
+  long_about = "A tool for deploying or building rust projects on remote servers.\n\nConfiguration via deploy.toml:\n  target = \"myhost\"      # SSH target (hostname, user@host, or ~/.ssh/config alias)\n  remote_path = \"...\"     # Optional remote path (defaults to $HOME/build/{project_name})"
 )]
 pub struct App {
   #[command(subcommand)]
   pub cmd: Command,
 
-  /// Override the target host from deploy.toml
+  /// Override the target from deploy.toml
   #[arg(long, short)]
   pub target: Option<String>,
 

@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   if cfg.target.is_empty() {
     return Err(
-      "No target specified. Provide --target flag or create deploy.toml with: target = \"your-server\""
+      "No target specified. Provide --target flag or create deploy.toml with: target = \"<ssh_target>\""
         .into(),
     );
   }
