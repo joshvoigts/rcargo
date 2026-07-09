@@ -15,13 +15,18 @@ pub struct Config {
 
 impl Config {
   pub fn load() -> Result<Self, Box<dyn Error>> {
-    let config_path = Path::new("deploy.toml");
-    if !config_path.exists() {
-      return Err(
-        "deploy.toml not found. Create one with:\ntarget = \"your-server\""
-          .into(),
-      );
-    }
+    let candidates = ["deploy.toml", "rdeploy.toml"];
+    let config_path =
+      candidates.iter().map(Path::new).find(|p| p.exists());
+    let config_path = match config_path {
+      Some(p) => p,
+      None => {
+        return Err(
+          "No config file found. Create one of deploy.toml or rdeploy.toml with:\ntarget = \"your-server\""
+            .into(),
+        );
+      }
+    };
     let content = fs::read_to_string(config_path)?;
     let config: Config = toml::from_str(&content)?;
     Ok(config)
