@@ -1,4 +1,6 @@
+use crate::config::Config;
 use crate::git;
+use crate::sandbox;
 use crate::ssh;
 use std::{error::Error, time::Duration};
 
@@ -36,17 +38,19 @@ pub fn stop_server(
 }
 
 pub fn run_server(
-  host: &str,
+  config: &Config,
   remote_path: &str,
   branch: &str,
   package_name: &str,
 ) -> Result<(), Box<dyn Error>> {
+  let host = &config.target;
+
   stop_server(host, remote_path)?;
 
   git::sync_repo(host, remote_path, branch)?;
 
   println!("Building on remote...");
-  let cmd = format!("cd {remote_path} && cargo build --release");
+  let cmd = sandbox::build_cmd(config, remote_path);
   ssh::ssh_run(host, &cmd)?;
 
   let bin_path =

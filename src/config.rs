@@ -11,6 +11,40 @@ pub struct Config {
   /// Remote path for the repo. Defaults to `$HOME/build/{project_name}`
   #[serde(default)]
   pub remote_path: Option<String>,
+
+  /// Sandbox configuration for remote builds
+  #[serde(default)]
+  pub sandbox: Sandbox,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct Sandbox {
+  #[serde(default)]
+  pub allow: SandboxAllow,
+
+  #[serde(default)]
+  pub deny: SandboxDeny,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct SandboxAllow {
+  #[serde(default)]
+  pub read: Vec<String>,
+
+  #[serde(default)]
+  pub write: Vec<String>,
+
+  #[serde(default)]
+  pub net: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct SandboxDeny {
+  #[serde(default)]
+  pub read: Vec<String>,
+
+  #[serde(default)]
+  pub write: Vec<String>,
 }
 
 impl Config {

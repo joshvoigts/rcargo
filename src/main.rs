@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod git;
+mod sandbox;
 mod server;
 mod ssh;
 
@@ -17,6 +18,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Err(_) => Config {
       target: String::new(),
       remote_path: None,
+      sandbox: Default::default(),
     },
   };
 
@@ -41,20 +43,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   match app.cmd {
     Command::Build => {
-      build_remote(
-        &cfg.target,
-        &remote_path,
-        &branch,
-        &package_name,
-      )?;
+      build_remote(&cfg, &remote_path, &branch, &package_name)?;
     }
     Command::Run => {
-      server::run_server(
-        &cfg.target,
-        &remote_path,
-        &branch,
-        &package_name,
-      )?;
+      server::run_server(&cfg, &remote_path, &branch, &package_name)?;
     }
     Command::Stop => {
       server::stop_server(&cfg.target, &remote_path)?;
@@ -80,16 +72,16 @@ fn detect_package_name() -> Result<String, Box<dyn Error>> {
 }
 
 fn build_remote(
-  host: &str,
+  config: &Config,
   remote_path: &str,
   branch: &str,
   package_name: &str,
 ) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(host, remote_path, branch)?;
+  git::sync_repo(&config.target, remote_path, branch)?;
 
   println!("Building on remote...");
-  let cmd = format!("cd {remote_path} && cargo build --release");
-  ssh::ssh_run(host, &cmd)?;
+  let cmd = sandbox::build_cmd(config, remote_path);
+  ssh::ssh_run(&config.target, &cmd)?;
 
   std::fs::create_dir_all("builds")?;
   let remote_bin =
@@ -97,7 +89,7 @@ fn build_remote(
   let local_bin = format!("builds/{package_name}");
 
   println!("Copying binary back...");
-  ssh::scp_from(host, &remote_bin, &local_bin)?;
+  ssh::scp_from(&config.target, &remote_bin, &local_bin)?;
 
   println!("Build complete! Binary at: {local_bin}");
   Ok(())
