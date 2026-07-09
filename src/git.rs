@@ -13,34 +13,22 @@ pub fn sync_repo(
   remote_path: &str,
   branch: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  // Ensure rsync is available
-  let rsync_available = Command::new("rsync")
-    .arg("--version")
-    .stdout(std::process::Stdio::null())
-    .stderr(std::process::Stdio::null())
-    .status()
-    .map(|s| s.success())
-    .unwrap_or(false);
-
-  if !rsync_available {
-    return Err("rsync is required but not installed.".into());
-  }
-
   // Ensure remote directory exists
   ssh_run(host, &format!("mkdir -p {remote_path}"))?;
 
-  let mut rsync_args: Vec<String> =
-    vec!["-avz".into(), "--delete".into()];
+  let mut rsync_args = vec!["-avz", "--delete"];
 
   if std::path::Path::new(".gitignore").exists() {
-    rsync_args.push("--exclude-from=.gitignore".into());
+    rsync_args.push("--exclude-from=.gitignore");
   }
 
-  rsync_args.push("./".into());
-  rsync_args.push(format!("{host}:{remote_path}/"));
+  rsync_args.push("./");
 
   println!("Syncing to remote...");
-  let status = Command::new("rsync").args(&rsync_args).status()?;
+  let status = Command::new("rsync")
+    .args(&rsync_args)
+    .arg(format!("{host}:{remote_path}/"))
+    .status()?;
   if !status.success() {
     return Err("rsync failed".into());
   }

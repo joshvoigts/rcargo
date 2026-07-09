@@ -1,45 +1,14 @@
-use std::io::{self, BufRead};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 /// Run a command on the remote via SSH, streaming output to the local terminal.
 pub fn ssh_run(
   host: &str,
   cmd: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  let mut child = Command::new("ssh")
+  let status = Command::new("ssh")
     .args([host, cmd])
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()?;
+    .status()?;
 
-  // Stream stdout
-  let stdout = child.stdout.take().unwrap();
-  let stderr = child.stderr.take().unwrap();
-
-  let stdout_reader = io::BufReader::new(stdout);
-  let stderr_reader = io::BufReader::new(stderr);
-
-  // Use threads to stream both stdout and stderr
-  let stdout_handle = std::thread::spawn(move || {
-    for line in stdout_reader.lines() {
-      if let Ok(line) = line {
-        println!("{line}");
-      }
-    }
-  });
-
-  let stderr_handle = std::thread::spawn(move || {
-    for line in stderr_reader.lines() {
-      if let Ok(line) = line {
-        eprintln!("{line}");
-      }
-    }
-  });
-
-  stdout_handle.join().unwrap();
-  stderr_handle.join().unwrap();
-
-  let status = child.wait()?;
   if !status.success() {
     return Err(
       format!("SSH command failed with status: {status}").into(),
