@@ -17,13 +17,30 @@ pub struct Config {
   pub sandbox: Sandbox,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 pub struct Sandbox {
+  #[serde(default = "default_true")]
+  pub enabled: bool,
+
   #[serde(default)]
   pub allow: SandboxAllow,
 
   #[serde(default)]
   pub deny: SandboxDeny,
+}
+
+impl Default for Sandbox {
+  fn default() -> Self {
+    Self {
+      enabled: true,
+      allow: Default::default(),
+      deny: Default::default(),
+    }
+  }
+}
+
+fn default_true() -> bool {
+  true
 }
 
 #[derive(Debug, Deserialize, Default)]

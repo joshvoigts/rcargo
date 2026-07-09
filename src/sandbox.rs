@@ -1,9 +1,14 @@
 use crate::config::Config;
 
-/// Build a zerobox command that wraps a cargo build.
-///
-/// The returned string is meant to be passed to `ssh_run`.
+/// Build a remote cargo build command, optionally sandboxed
+/// with zerobox.
 pub fn build_cmd(config: &Config, remote_path: &str) -> String {
+  let inner = format!("cd {remote_path} && cargo build --release");
+
+  if !config.sandbox.enabled {
+    return inner;
+  }
+
   let mut args = vec!["zerobox".to_string()];
 
   // Defaults needed for cargo/rustc to work
@@ -41,9 +46,7 @@ pub fn build_cmd(config: &Config, remote_path: &str) -> String {
     args.push(format!("--deny-write={w}"));
   }
 
-  args.push(format!(
-    "bash -c \"cd {remote_path} && cargo build --release\""
-  ));
+  args.push(format!("bash -c \"{inner}\""));
 
   args.join(" ")
 }
