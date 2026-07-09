@@ -22,7 +22,7 @@ impl Config {
       Some(p) => p,
       None => {
         return Err(
-          "No config file found. Create one of deploy.toml or rdeploy.toml with:\ntarget = \"your-server\""
+          "No config file found. Create deploy.toml with:\ntarget = \"your-server\""
             .into(),
         );
       }

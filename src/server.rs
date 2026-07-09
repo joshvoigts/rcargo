@@ -6,7 +6,7 @@ pub fn stop_server(
   host: &str,
   remote_path: &str,
 ) -> Result<(), Box<dyn Error>> {
-  let pid_file = format!("{remote_path}/deploy.pid");
+  let pid_file = format!("{remote_path}/rdeploy.pid");
 
   let result = ssh::ssh_capture(
     host,
@@ -51,7 +51,7 @@ pub fn run_server(
 
   let bin_path =
     format!("{remote_path}/target/release/{package_name}");
-  let pid_file = format!("{remote_path}/deploy.pid");
+  let pid_file = format!("{remote_path}/rdeploy.pid");
   let log_file = format!("{pid_file}.log");
 
   ssh::ssh_run(
