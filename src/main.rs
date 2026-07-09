@@ -34,7 +34,15 @@ fn main() -> Result<(), Box<dyn Error>> {
   }
 
   let package_name = detect_package_name()?;
-  let remote_path = cfg.remote_path(&package_name);
+  let mut remote_path = cfg.remote_path(&package_name);
+
+  // Resolve $HOME to an absolute path so rsync and
+  // other tools that don't expand env vars work correctly.
+  if remote_path.contains("$HOME") {
+    let home = ssh::resolve_home(&cfg.target)?;
+    remote_path =
+      remote_path.replace("$HOME", &home);
+  }
 
   let branch = match &app.branch {
     Some(b) => b.clone(),

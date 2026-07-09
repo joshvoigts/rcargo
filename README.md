@@ -1,6 +1,6 @@
 # rdeploy
 
-Build and deploy Rust projects on remote servers via SSH.
+Build and deploy rust projects on remote servers via SSH.
 
 ## Setup
 
