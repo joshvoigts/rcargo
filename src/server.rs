@@ -1,22 +1,26 @@
-use crate::ssh::{self, ssh_capture};
+use crate::git;
+use crate::ssh;
+use std::{error::Error, time::Duration};
 
 pub fn stop_server(
   host: &str,
   remote_path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn Error>> {
   let pid_file = format!("{remote_path}/deploy.pid");
 
-  let result =
-    ssh_capture(host, &format!("test -f {pid_file} && echo exists"));
+  let result = ssh::ssh_capture(
+    host,
+    &format!("test -f {pid_file} && echo exists"),
+  );
   if !matches!(&result, Ok(s) if s == "exists") {
     println!("No running process found");
     return Ok(());
   }
 
-  let pid = ssh_capture(host, &format!("cat {pid_file}"))?;
+  let pid = ssh::ssh_capture(host, &format!("cat {pid_file}"))?;
   let pid: u32 = pid.parse()?;
 
-  let result = ssh_capture(
+  let result = ssh::ssh_capture(
     host,
     &format!("kill -0 {pid} 2>/dev/null && echo running"),
   );
@@ -36,10 +40,10 @@ pub fn run_server(
   remote_path: &str,
   branch: &str,
   package_name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn Error>> {
   stop_server(host, remote_path)?;
 
-  crate::git::sync_repo(host, remote_path, branch)?;
+  git::sync_repo(host, remote_path, branch)?;
 
   println!("Building on remote...");
   let cmd = format!("cd {remote_path} && cargo build --release");
@@ -57,11 +61,11 @@ pub fn run_server(
     ),
   )?;
 
-  let pid = ssh_capture(host, &format!("cat {pid_file}"))?;
+  let pid = ssh::ssh_capture(host, &format!("cat {pid_file}"))?;
 
-  std::thread::sleep(std::time::Duration::from_secs(2));
+  std::thread::sleep(Duration::from_secs(2));
 
-  let result = ssh_capture(
+  let result = ssh::ssh_capture(
     host,
     &format!("kill -0 {pid} 2>/dev/null && echo running"),
   );
@@ -69,7 +73,9 @@ pub fn run_server(
   if matches!(&result, Ok(s) if s == "running") {
     println!("Process started with PID {pid}");
   } else {
-    if let Ok(log) = ssh_capture(host, &format!("cat {log_file}")) {
+    if let Ok(log) =
+      ssh::ssh_capture(host, &format!("cat {log_file}"))
+    {
       eprintln!("Process exited unexpectedly. Log:\n{log}");
     }
     return Err("Process failed to start".into());

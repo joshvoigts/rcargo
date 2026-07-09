@@ -1,7 +1,7 @@
+use serde::Deserialize;
+use std::error::Error;
 use std::fs;
 use std::path::Path;
-
-use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -14,7 +14,7 @@ pub struct Config {
 }
 
 impl Config {
-  pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+  pub fn load() -> Result<Self, Box<dyn Error>> {
     let config_path = Path::new("deploy.toml");
     if !config_path.exists() {
       return Err(

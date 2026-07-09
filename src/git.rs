@@ -1,6 +1,5 @@
-use std::process::Command;
-
 use crate::ssh::ssh_run;
+use std::{error::Error, path::Path, process::Command};
 
 /// Sync the local repo to the remote via rsync.
 ///
@@ -12,13 +11,13 @@ pub fn sync_repo(
   host: &str,
   remote_path: &str,
   branch: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn Error>> {
   // Ensure remote directory exists
   ssh_run(host, &format!("mkdir -p {remote_path}"))?;
 
   let mut rsync_args = vec!["-avz", "--delete"];
 
-  if std::path::Path::new(".gitignore").exists() {
+  if Path::new(".gitignore").exists() {
     rsync_args.push("--exclude-from=.gitignore");
   }
 
@@ -44,8 +43,7 @@ pub fn sync_repo(
 }
 
 /// Detect the current local branch name.
-pub fn current_branch() -> Result<String, Box<dyn std::error::Error>>
-{
+pub fn current_branch() -> Result<String, Box<dyn Error>> {
   let output = Command::new("git")
     .args(["rev-parse", "--abbrev-ref", "HEAD"])
     .output()?;

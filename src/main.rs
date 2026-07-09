@@ -4,13 +4,15 @@ mod git;
 mod server;
 mod ssh;
 
+use crate::config::Config;
 use clap::Parser;
 use cli::{App, Command};
+use std::error::Error;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
   let app = App::parse();
 
-  let mut cfg = config::Config::load()?;
+  let mut cfg = Config::load()?;
   if let Some(target) = app.target {
     cfg.target = target;
   }
@@ -48,8 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   Ok(())
 }
 
-fn detect_package_name() -> Result<String, Box<dyn std::error::Error>>
-{
+fn detect_package_name() -> Result<String, Box<dyn Error>> {
   #[derive(serde::Deserialize)]
   struct CargoToml {
     package: Package,
@@ -69,7 +70,7 @@ fn build_remote(
   remote_path: &str,
   branch: &str,
   package_name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn Error>> {
   git::sync_repo(host, remote_path, branch)?;
 
   println!("Building on remote...");

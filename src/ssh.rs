@@ -1,13 +1,8 @@
-use std::process::Command;
+use std::{error::Error, process::Command};
 
 /// Run a command on the remote via SSH, streaming output to the local terminal.
-pub fn ssh_run(
-  host: &str,
-  cmd: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-  let status = Command::new("ssh")
-    .args([host, cmd])
-    .status()?;
+pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
+  let status = Command::new("ssh").args([host, cmd]).status()?;
 
   if !status.success() {
     return Err(
@@ -23,7 +18,7 @@ pub fn scp_from(
   host: &str,
   remote_path: &str,
   local_path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn Error>> {
   let output = Command::new("scp")
     .args([format!("{host}:{remote_path}"), local_path.to_string()])
     .output()?;
@@ -40,7 +35,7 @@ pub fn scp_from(
 pub fn ssh_capture(
   host: &str,
   cmd: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn Error>> {
   let output = Command::new("ssh").args([host, cmd]).output()?;
 
   if !output.status.success() {
