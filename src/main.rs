@@ -81,18 +81,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         app.debug,
       )?;
     }
-    Command::Install { path, bin } => {
-      install_remote(
-        &cfg,
-        &remote_path,
-        &home,
-        &branch,
-        &package_name,
-        path.as_deref(),
-        bin.as_deref(),
-        app.debug,
-      )?;
-    }
     Command::Run => {
       server::run_server(
         &cfg,
@@ -137,16 +125,6 @@ fn detect_package_name() -> Result<String, Box<dyn Error>> {
   Ok(cargo.package.name)
 }
 
-/// Detect the package name from a Cargo.toml at the given relative path.
-fn detect_package_name_at(
-  path: &str,
-) -> Result<String, Box<dyn Error>> {
-  let cargo_path = std::path::Path::new(path).join("Cargo.toml");
-  let content = std::fs::read_to_string(&cargo_path)?;
-  let cargo: CargoToml = toml::from_str(&content)?;
-  Ok(cargo.package.name)
-}
-
 fn build_remote(
   config: &Config,
   remote_path: &str,
@@ -160,7 +138,7 @@ fn build_remote(
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path, home, debug, &[]);
+  let cmd = sandbox::build_cmd(config, remote_path, home, debug);
   ssh::ssh_run(&config.target, &cmd)?;
 
   std::fs::create_dir_all("builds")?;
@@ -172,60 +150,6 @@ fn build_remote(
   ssh::scp_from(&config.target, &remote_bin, &local_bin)?;
 
   println!("Build complete! Binary at: {local_bin}");
-  Ok(())
-}
-
-fn install_remote(
-  config: &Config,
-  remote_path: &str,
-  home: &str,
-  _branch: &str,
-  package_name: &str,
-  path: Option<&str>,
-  bin: Option<&str>,
-  debug: bool,
-) -> Result<(), Box<dyn Error>> {
-  // Build extra cargo args from --path and --bin.
-  let mut cargo_args: Vec<String> = Vec::new();
-  if let Some(p) = path {
-    let manifest = std::path::Path::new(p).join("Cargo.toml");
-    cargo_args.push("--manifest-path".into());
-    cargo_args.push(manifest.to_string_lossy().into_owned());
-  }
-  if let Some(b) = bin {
-    cargo_args.push("--bin".into());
-    cargo_args.push(b.into());
-  }
-
-  // Resolve the binary name for copying.
-  let bin_name = match bin {
-    Some(b) => b.to_string(),
-    None => match path {
-      Some(p) => detect_package_name_at(p)?,
-      None => package_name.to_string(),
-    },
-  };
-
-  git::sync_repo(&config.target, remote_path)?;
-
-  server::run_hooks(config, remote_path, debug)?;
-
-  println!("Building on remote...");
-  let cmd =
-    sandbox::build_cmd(config, remote_path, home, debug, &cargo_args);
-  ssh::ssh_run(&config.target, &cmd)?;
-
-  let remote_bin = format!("{remote_path}/target/release/{bin_name}");
-  let cargo_bin =
-    format!("{}/.cargo/bin/{bin_name}", std::env::var("HOME")?);
-
-  println!("Installing binary locally...");
-  let cargo_bin_dir =
-    std::path::Path::new(&cargo_bin).parent().unwrap();
-  std::fs::create_dir_all(cargo_bin_dir)?;
-  ssh::scp_from(&config.target, &remote_bin, &cargo_bin)?;
-
-  println!("Installed {bin_name} to {cargo_bin}");
   Ok(())
 }
 

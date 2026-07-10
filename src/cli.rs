@@ -36,16 +36,6 @@ pub struct App {
 pub enum Command {
   /// Build on remote and copy binary back
   Build,
-  /// Build on remote and install binary locally to ~/.cargo/bin
-  Install {
-    /// Install from a path in the workspace (e.g. --path ./crates/my-app)
-    #[arg(long)]
-    path: Option<String>,
-
-    /// Install a specific binary by name
-    #[arg(long)]
-    bin: Option<String>,
-  },
   /// Build and run on remote
   Run,
   /// Stop the running process on remote
