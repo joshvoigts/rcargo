@@ -87,7 +87,7 @@ pub fn run_server(
   run_hooks(config, remote_path)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path, home, debug);
+  let cmd = sandbox::build_cmd(config, remote_path, home, debug, &[]);
   ssh::ssh_run(host, &cmd)?;
 
   let bin_path = ssh::shell_quote(&format!(

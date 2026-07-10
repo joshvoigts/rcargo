@@ -112,9 +112,15 @@ pub fn build_cmd(
   remote_path: &str,
   home: &str,
   debug: bool,
+  extra_cargo_args: &[String],
 ) -> String {
+  let cargo_args = if extra_cargo_args.is_empty() {
+    String::new()
+  } else {
+    format!(" {}", extra_cargo_args.join(" "))
+  };
   let inner = format!(
-    "cd {} && cargo build --release",
+    "cd {} && cargo build --release{cargo_args}",
     shell_quote(remote_path)
   );
 
