@@ -40,4 +40,10 @@ pub enum Command {
   Run,
   /// Stop the running process on remote
   Stop,
+  /// Run tests on remote
+  Test {
+    /// Extra arguments passed through to cargo test (e.g. -- --skip foo)
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    args: Vec<String>,
+  },
 }

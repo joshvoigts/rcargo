@@ -94,6 +94,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     Command::Stop => {
       server::stop_server(&cfg.target, &remote_path)?;
     }
+    Command::Test { args } => {
+      test_remote(
+        &cfg,
+        &remote_path,
+        &home,
+        &branch,
+        &args,
+        app.debug,
+      )?;
+    }
   }
 
   Ok(())
@@ -140,5 +150,26 @@ fn build_remote(
   ssh::scp_from(&config.target, &remote_bin, &local_bin)?;
 
   println!("Build complete! Binary at: {local_bin}");
+  Ok(())
+}
+
+fn test_remote(
+  config: &Config,
+  remote_path: &str,
+  home: &str,
+  _branch: &str,
+  extra_args: &[String],
+  debug: bool,
+) -> Result<(), Box<dyn Error>> {
+  git::sync_repo(&config.target, remote_path)?;
+
+  server::run_hooks(config, remote_path)?;
+
+  println!("Running tests on remote...");
+  let cmd =
+    sandbox::test_cmd(config, remote_path, home, extra_args, debug);
+  ssh::ssh_run(&config.target, &cmd)?;
+
+  println!("Tests complete!");
   Ok(())
 }
