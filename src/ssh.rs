@@ -8,8 +8,15 @@ pub fn shell_quote(s: &str) -> String {
 }
 
 /// Run a command on the remote via SSH, streaming output to the local terminal.
+///
+/// Allocates a pseudo-terminal (`-t`) so remote programs can emit
+/// colors. Stderr from the PTY teardown ("Connection closed") is
+/// suppressed because it's cosmetic noise.
 pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
-  let status = Command::new("ssh").args([host, cmd]).status()?;
+  let status = Command::new("ssh")
+    .args(["-t", host, cmd])
+    .stderr(std::process::Stdio::null())
+    .status()?;
 
   if !status.success() {
     return Err(

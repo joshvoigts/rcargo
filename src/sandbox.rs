@@ -76,18 +76,16 @@ pub fn test_cmd(
 
   args.push("--".into());
 
-  let env_prefix: String = config
+  let mut env_vars: Vec<String> = config
     .sandbox
     .env
     .iter()
     .map(|(k, v)| format!("export {k}={}", shell_quote(v)))
-    .collect::<Vec<_>>()
-    .join(" && ");
-  let full_cmd = if env_prefix.is_empty() {
-    format!("bash -c \"{inner}\"")
-  } else {
-    format!("bash -c \"{env_prefix} && {inner}\"")
-  };
+    .collect();
+  env_vars.push("export CARGO_TERM_COLOR=always".into());
+  let env_prefix = env_vars.join(" && ");
+  let full_cmd =
+    format!("bash --norc --noprofile -c \"{env_prefix} && {inner}\"");
   args.push(full_cmd);
 
   let cmd = args.join(" ");
@@ -183,9 +181,9 @@ pub fn build_cmd(
     .collect::<Vec<_>>()
     .join(" && ");
   let full_cmd = if env_prefix.is_empty() {
-    format!("bash -c \"{inner}\"")
+    format!("bash --norc --noprofile -c \"{inner}\"")
   } else {
-    format!("bash -c \"{env_prefix} && {inner}\"")
+    format!("bash --norc --noprofile -c \"{env_prefix} && {inner}\"")
   };
   args.push(full_cmd);
 
