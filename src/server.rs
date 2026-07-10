@@ -4,11 +4,44 @@ use crate::sandbox;
 use crate::ssh;
 use std::{error::Error, time::Duration};
 
+/// Run prebuild hooks on the remote host, outside the sandbox.
+pub fn run_hooks(
+  config: &Config,
+  remote_path: &str,
+) -> Result<(), Box<dyn Error>> {
+  if let Some(ref hook) = config.hooks.prebuild {
+    let env_prefix: String = config
+      .sandbox
+      .env
+      .iter()
+      .map(|(k, v)| format!("export {k}={}", ssh::shell_quote(v)))
+      .collect::<Vec<_>>()
+      .join(" && ");
+    let hook_cmd = if env_prefix.is_empty() {
+      format!(
+        "cd {} && {}",
+        ssh::shell_quote(remote_path),
+        hook.as_command()
+      )
+    } else {
+      format!(
+        "cd {} && {env_prefix} && {}",
+        ssh::shell_quote(remote_path),
+        hook.as_command()
+      )
+    };
+    println!("Running prebuild hook...");
+    ssh::ssh_run(&config.target, &hook_cmd)?;
+  }
+  Ok(())
+}
+
 pub fn stop_server(
   host: &str,
   remote_path: &str,
 ) -> Result<(), Box<dyn Error>> {
-  let pid_file = format!("{remote_path}/rdeploy.pid");
+  let pid_file =
+    ssh::shell_quote(&format!("{remote_path}/rdeploy.pid"));
 
   let result = ssh::ssh_capture(
     host,
@@ -51,19 +84,25 @@ pub fn run_server(
 
   git::sync_repo(host, remote_path)?;
 
+  run_hooks(config, remote_path)?;
+
   println!("Building on remote...");
   let cmd = sandbox::build_cmd(config, remote_path, home, debug);
   ssh::ssh_run(host, &cmd)?;
 
-  let bin_path =
-    format!("{remote_path}/target/release/{package_name}");
-  let pid_file = format!("{remote_path}/rdeploy.pid");
-  let log_file = format!("{pid_file}.log");
+  let bin_path = ssh::shell_quote(&format!(
+    "{remote_path}/target/release/{package_name}"
+  ));
+  let pid_file =
+    ssh::shell_quote(&format!("{remote_path}/rdeploy.pid"));
+  let log_file =
+    ssh::shell_quote(&format!("{remote_path}/rdeploy.pid.log"));
 
+  let cd_path = ssh::shell_quote(remote_path);
   ssh::ssh_run(
     host,
     &format!(
-      "cd {remote_path} && nohup {bin_path} > {log_file} 2>&1 & echo $! > {pid_file}"
+      "cd {cd_path} && nohup {bin_path} > {log_file} 2>&1 & echo $! > {pid_file}"
     ),
   )?;
 

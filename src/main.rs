@@ -34,6 +34,27 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
   }
 
+  // Verify SSH connectivity before doing any work.
+  let status = std::process::Command::new("ssh")
+    .args([
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=5",
+      &cfg.target,
+      "true",
+    ])
+    .status();
+  if !matches!(status, Ok(s) if s.success()) {
+    return Err(
+      format!(
+        "Cannot connect to remote host '{}' via SSH",
+        cfg.target
+      )
+      .into(),
+    );
+  }
+
   let package_name = detect_package_name()?;
   let mut remote_path = cfg.remote_path(&package_name);
 
@@ -78,16 +99,17 @@ fn main() -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn detect_package_name() -> Result<String, Box<dyn Error>> {
-  #[derive(serde::Deserialize)]
-  struct CargoToml {
-    package: Package,
-  }
-  #[derive(serde::Deserialize)]
-  struct Package {
-    name: String,
-  }
+#[derive(serde::Deserialize)]
+struct CargoToml {
+  package: Package,
+}
 
+#[derive(serde::Deserialize)]
+struct Package {
+  name: String,
+}
+
+fn detect_package_name() -> Result<String, Box<dyn Error>> {
   let content = std::fs::read_to_string("Cargo.toml")?;
   let cargo: CargoToml = toml::from_str(&content)?;
   Ok(cargo.package.name)
@@ -103,27 +125,7 @@ fn build_remote(
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
 
-  // Run prebuild hooks outside the sandbox — user-specified
-  // setup commands that may need full access.
-  if let Some(ref hook) = config.hooks.prebuild {
-    let env_prefix: String = config
-      .sandbox
-      .env
-      .iter()
-      .map(|(k, v)| format!("export {k}='{v}'"))
-      .collect::<Vec<_>>()
-      .join(" && ");
-    let hook_cmd = if env_prefix.is_empty() {
-      format!("cd {remote_path} && {}", hook.as_command())
-    } else {
-      format!(
-        "cd {remote_path} && {env_prefix} && {}",
-        hook.as_command()
-      )
-    };
-    println!("Running prebuild hook...");
-    ssh::ssh_run(&config.target, &hook_cmd)?;
-  }
+  server::run_hooks(config, remote_path)?;
 
   println!("Building on remote...");
   let cmd = sandbox::build_cmd(config, remote_path, home, debug);

@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::ssh::shell_quote;
 
 /// Build a remote cargo build command, sandboxed with nono.
 ///
@@ -18,7 +19,10 @@ pub fn build_cmd(
   home: &str,
   debug: bool,
 ) -> String {
-  let inner = format!("cd {remote_path} && cargo build --release");
+  let inner = format!(
+    "cd {} && cargo build --release",
+    shell_quote(remote_path)
+  );
 
   if !config.sandbox.enabled {
     return inner;
@@ -79,7 +83,7 @@ pub fn build_cmd(
     .sandbox
     .env
     .iter()
-    .map(|(k, v)| format!("export {k}='{v}'"))
+    .map(|(k, v)| format!("export {k}={}", shell_quote(v)))
     .collect::<Vec<_>>()
     .join(" && ");
   let full_cmd = if env_prefix.is_empty() {

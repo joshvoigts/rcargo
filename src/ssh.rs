@@ -1,4 +1,11 @@
+use shell_quote::Sh;
 use std::{error::Error, process::Command};
+
+/// Quote a string for safe use in POSIX shell commands.
+pub fn shell_quote(s: &str) -> String {
+  // Sh::quote_vec always produces ASCII, so this is safe.
+  String::from_utf8(Sh::quote_vec(s)).unwrap()
+}
 
 /// Run a command on the remote via SSH, streaming output to the local terminal.
 pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
@@ -19,8 +26,9 @@ pub fn scp_from(
   remote_path: &str,
   local_path: &str,
 ) -> Result<(), Box<dyn Error>> {
+  let remote_spec = format!("{}:{}", host, shell_quote(remote_path));
   let output = Command::new("scp")
-    .args([format!("{host}:{remote_path}"), local_path.to_string()])
+    .args([remote_spec, local_path.to_string()])
     .output()?;
 
   if !output.status.success() {

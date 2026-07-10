@@ -1,17 +1,17 @@
-use crate::ssh::ssh_run;
+use crate::ssh::{shell_quote, ssh_run};
 use std::{error::Error, path::Path, process::Command};
 
 /// Sync the local repo to the remote via rsync.
 ///
-/// Copies the working tree so the remote has the same shape as the
-/// local repo (same branch, same unstaged changes). Gitignored paths
-/// are excluded so build artifacts, databases, etc. are untouched.
+/// Copies the working tree (excluding `.git`) so the remote has the
+/// same shape as the local repo. Gitignored paths are excluded so
+/// build artifacts, databases, etc. are untouched.
 pub fn sync_repo(
   host: &str,
   remote_path: &str,
 ) -> Result<(), Box<dyn Error>> {
   // Ensure remote directory exists
-  ssh_run(host, &format!("mkdir -p {remote_path}"))?;
+  ssh_run(host, &format!("mkdir -p {}", shell_quote(remote_path)))?;
 
   let mut rsync_args = vec!["-az", "--delete", "--exclude=.git"];
 
