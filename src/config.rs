@@ -24,9 +24,6 @@ pub struct Sandbox {
 
   #[serde(default)]
   pub allow: SandboxAllow,
-
-  #[serde(default)]
-  pub deny: SandboxDeny,
 }
 
 impl Default for Sandbox {
@@ -34,7 +31,6 @@ impl Default for Sandbox {
     Self {
       enabled: true,
       allow: Default::default(),
-      deny: Default::default(),
     }
   }
 }
@@ -46,22 +42,10 @@ fn default_true() -> bool {
 #[derive(Debug, Deserialize, Default)]
 pub struct SandboxAllow {
   #[serde(default)]
-  pub read: Vec<String>,
-
-  #[serde(default)]
   pub write: Vec<String>,
 
   #[serde(default)]
   pub net: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub struct SandboxDeny {
-  #[serde(default)]
-  pub read: Vec<String>,
-
-  #[serde(default)]
-  pub write: Vec<String>,
 }
 
 impl Config {

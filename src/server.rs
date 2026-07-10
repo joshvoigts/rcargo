@@ -40,6 +40,7 @@ pub fn stop_server(
 pub fn run_server(
   config: &Config,
   remote_path: &str,
+  home: &str,
   branch: &str,
   package_name: &str,
 ) -> Result<(), Box<dyn Error>> {
@@ -50,7 +51,7 @@ pub fn run_server(
   git::sync_repo(host, remote_path, branch)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path);
+  let cmd = sandbox::build_cmd(config, remote_path, home);
   ssh::ssh_run(host, &cmd)?;
 
   let bin_path =

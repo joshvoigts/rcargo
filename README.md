@@ -18,19 +18,26 @@ remote_path = "/optional/path"  # Defaults to $HOME/build/{project_name}
 
 ### Sandbox
 
-Remote builds run inside a [zerobox](https://github.com/nicholasgasior/zerobox) sandbox by default with access to cargo/rustup dirs and crate registries. To customize or disable:
+Remote builds run inside a [zerobox](https://github.com/afshinm/zerobox) sandbox by default. Reads are restricted to cargo/rustup dirs and the project. Writes and network are further restricted to only what's needed.
+
+> **Note:** On Linux, zerobox may block binary execution from user paths.
+> If builds fail with "Operation not permitted", disable the sandbox:
+> ```toml
+> [sandbox]
+> enabled = false
+> ```
+
+To customize allowed paths:
 
 ```toml
-[sandbox]
-enabled = false  # Skip sandbox entirely
-
 [sandbox.allow]
 read = ["/opt/shared/libs"]
 write = ["/tmp/build-cache"]
 net = ["internal.registry.com"]
 
 [sandbox.deny]
-read = [".edwin"]
+read = [".secrets"]
+write = [".git"]
 ```
 
 ## Usage

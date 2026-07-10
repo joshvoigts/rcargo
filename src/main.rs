@@ -36,10 +36,10 @@ fn main() -> Result<(), Box<dyn Error>> {
   let package_name = detect_package_name()?;
   let mut remote_path = cfg.remote_path(&package_name);
 
-  // Resolve $HOME to an absolute path so rsync and
-  // other tools that don't expand env vars work correctly.
+  // Always resolve remote $HOME — needed for rsync,
+  // scp, and sandbox path arguments.
+  let home = ssh::resolve_home(&cfg.target)?;
   if remote_path.contains("$HOME") {
-    let home = ssh::resolve_home(&cfg.target)?;
     remote_path = remote_path.replace("$HOME", &home);
   }
 
@@ -50,10 +50,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   match app.cmd {
     Command::Build => {
-      build_remote(&cfg, &remote_path, &branch, &package_name)?;
+      build_remote(
+        &cfg, &remote_path, &home, &branch, &package_name,
+      )?;
     }
     Command::Run => {
-      server::run_server(&cfg, &remote_path, &branch, &package_name)?;
+      server::run_server(
+        &cfg, &remote_path, &home, &branch, &package_name,
+      )?;
     }
     Command::Stop => {
       server::stop_server(&cfg.target, &remote_path)?;
@@ -81,13 +85,14 @@ fn detect_package_name() -> Result<String, Box<dyn Error>> {
 fn build_remote(
   config: &Config,
   remote_path: &str,
+  home: &str,
   branch: &str,
   package_name: &str,
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path, branch)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path);
+  let cmd = sandbox::build_cmd(config, remote_path, home);
   ssh::ssh_run(&config.target, &cmd)?;
 
   std::fs::create_dir_all("builds")?;

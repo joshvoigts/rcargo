@@ -1,59 +1,96 @@
 use crate::config::Config;
 
-/// Build a remote cargo build command, optionally sandboxed
-/// with zerobox.
-pub fn build_cmd(config: &Config, remote_path: &str) -> String {
+/// Build a remote cargo build command, sandboxed with bwrap + zerobox proxy.
+///
+/// `home` is the resolved `$HOME` on the remote host.
+///
+/// We call bwrap directly for whitelist-based filesystem sandboxing
+/// instead of using zerobox's `--allow-read`, which on Linux creates
+/// an empty tmpfs root with individual `--ro-bind` mounts that break
+/// cargo/rustc binary execution (EACCES on execve).
+///
+/// zerobox wraps the bwrap command with `--no-sandbox` to provide the
+/// network proxy (restricting outbound traffic to allowed domains).
+pub fn build_cmd(
+  config: &Config,
+  remote_path: &str,
+  home: &str,
+) -> String {
   let inner = format!("cd {remote_path} && cargo build --release");
 
   if !config.sandbox.enabled {
     return inner;
   }
 
+  // bwrap: whitelist-based filesystem sandbox
+  let mut b = vec!["bwrap".to_string()];
+
+  b.push("--tmpfs".into());
+  b.push("/".into());
+
+  for p in ["/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc"] {
+    b.push("--ro-bind".into());
+    b.push(p.into());
+    b.push(p.into());
+  }
+
+  b.push("--dev".into());
+  b.push("/dev".into());
+  b.push("--proc".into());
+  b.push("/proc".into());
+  b.push("--tmpfs".into());
+  b.push("/tmp".into());
+
+  for p in [format!("{home}/.rustup"), format!("{home}/.cargo")] {
+    b.push("--ro-bind".into());
+    b.push(p.clone());
+    b.push(p);
+  }
+
+  for p in [
+    format!("{home}/.rustup"),
+    format!("{home}/.cargo"),
+    remote_path.to_string(),
+  ] {
+    b.push("--bind".into());
+    b.push(p.clone());
+    b.push(p);
+  }
+
+  for w in &config.sandbox.allow.write {
+    b.push("--bind".into());
+    b.push(w.clone());
+    b.push(w.clone());
+  }
+
+  b.push("--die-with-parent".into());
+  b.push("--new-session".into());
+  b.push("--".into());
+  b.push("bash".into());
+  b.push("-c".into());
+  b.push(inner);
+
+  let bwrap_cmd = b.join(" ");
+
+  // zerobox: network proxy only
+  let mut net = vec![
+    "crates.io".to_string(),
+    "index.crates.io".to_string(),
+    "static.crates.io".to_string(),
+    "static.rust-lang.org".to_string(),
+    "github.com".to_string(),
+  ];
+  net.extend(config.sandbox.allow.net.iter().cloned());
+
   let mut args = vec!["zerobox".to_string()];
-
-  // Defaults needed for cargo/rustc to work
+  args.push("--no-sandbox".into());
   args.push("--allow-env".into());
-  args.push("--allow-write=$HOME/.cargo".into());
-  args.push("--allow-write=$HOME/.rustup".into());
-  // Shell configs (various shells)
-  args.push("--allow-read=$HOME/.profile".into());
-  args.push("--allow-read=$HOME/.bashrc".into());
-  args.push("--allow-read=$HOME/.bash_profile".into());
-  args.push("--allow-read=$HOME/.zshrc".into());
-  args.push("--allow-read=$HOME/.zshenv".into());
-  // Git/cargo config
-  args.push("--allow-read=$HOME/.gitconfig".into());
-  args.push("--allow-read=$HOME/.config/git".into());
-  args.push(
-    "--allow-net=crates.io,index.crates.io,static.crates.io,static.rust-lang.org,github.com"
-      .into(),
-  );
+  args.push("--debug".into());
+  args.push(format!("--allow-net={}", net.join(",")));
+  args.push("--".into());
+  args.push(bwrap_cmd);
 
-  // Project directory access
-  args.push(format!("--allow-read={remote_path}"));
-  args.push(format!("--allow-write={remote_path}"));
-
-  // Config extras
-  let allow = &config.sandbox.allow;
-  for r in &allow.read {
-    args.push(format!("--allow-read={r}"));
-  }
-  for w in &allow.write {
-    args.push(format!("--allow-write={w}"));
-  }
-  if !allow.net.is_empty() {
-    args.push(format!("--allow-net={}", allow.net.join(",")));
-  }
-
-  let deny = &config.sandbox.deny;
-  for r in &deny.read {
-    args.push(format!("--deny-read={r}"));
-  }
-  for w in &deny.write {
-    args.push(format!("--deny-write={w}"));
-  }
-
-  args.push(format!("bash -c \"{inner}\""));
-
-  args.join(" ")
+  let cmd = args.join(" ");
+  eprintln!("[rdeploy] sandbox cmd: {cmd}");
+  cmd
 }
