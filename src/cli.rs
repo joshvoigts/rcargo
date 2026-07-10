@@ -4,7 +4,16 @@ use clap::{Parser, Subcommand};
 #[command(
   name = "rdeploy",
   about = "Deploy or build rust projects on remote servers",
-  long_about = "A tool for deploying or building rust projects on remote servers.\n\nConfiguration via deploy.toml:\n  target = \"myhost\"      # SSH target (hostname, user@host, or ~/.ssh/config alias)\n  remote_path = \"...\"     # Optional remote path (defaults to $HOME/build/{project_name})"
+  long_about = "A tool for deploying or building rust projects on remote servers.\n\n\
+    Configuration via deploy.toml:\n  \
+    target = \"myhost\"      # SSH target (hostname, user@host, or ~/.ssh/config alias)\n  \
+    remote_path = \"...\"     # Optional remote path (defaults to $HOME/build/{project_name})\n  \
+    [sandbox]\n  \
+    enabled = true           # Enable sandboxed remote builds (default: true)\n  \
+    [sandbox.env]\n  \
+    DATABASE_URL = \"...\"    # Environment variables passed to the build\n  \
+    [hooks]\n  \
+    prebuild = \"...\"        # Shell commands run before the build (outside sandbox)"
 )]
 pub struct App {
   #[command(subcommand)]

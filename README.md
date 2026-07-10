@@ -5,7 +5,8 @@ Build and deploy rust projects on remote servers via SSH.
 ## Requirements
 
 - `rsync`
-- [zerobox](https://github.com/nicholasgasior/zerobox) — `cargo install zerobox`
+- `nono` — [github.com/nolabs-ai/nono](https://github.com/nolabs-ai/nono)
+- On Linux: a kernel supporting Landlock LSM (5.13+)
 
 ## Setup
 
@@ -18,37 +19,66 @@ remote_path = "/optional/path"  # Defaults to $HOME/build/{project_name}
 
 ### Sandbox
 
-Remote builds run inside a [zerobox](https://github.com/afshinm/zerobox) sandbox by default. Reads are restricted to cargo/rustup dirs and the project. Writes and network are further restricted to only what's needed.
+Remote builds run inside a [nono](https://github.com/nolabs-ai/nono) sandbox by default. nono uses Landlock (Linux) / Seatbelt (macOS) for kernel-level filesystem sandboxing — deny-all reads, then whitelist specific paths. Binary execution works because the filesystem is intact; the kernel just denies access to non-whitelisted paths.
 
-> **Note:** On Linux, zerobox may block binary execution from user paths.
-> If builds fail with "Operation not permitted", disable the sandbox:
-> ```toml
-> [sandbox]
-> enabled = false
-> ```
+Network is proxied with a domain allowlist for crates.io and github.com.
 
-To customize allowed paths:
+To disable the sandbox:
+
+```toml
+[sandbox]
+enabled = false
+```
+
+#### Environment variables
+
+Pass environment variables to the remote build (e.g. for `sqlx`):
+
+```toml
+[sandbox.env]
+DATABASE_URL = "sqlite://db.sqlite3"
+```
+
+#### Additional allowed paths
 
 ```toml
 [sandbox.allow]
-read = ["/opt/shared/libs"]
-write = ["/tmp/build-cache"]
+write = ["/opt/build-cache"]
 net = ["internal.registry.com"]
-
-[sandbox.deny]
-read = [".secrets"]
-write = [".git"]
 ```
+
+### Hooks
+
+Shell commands that run on the remote host **outside the sandbox** before the build. Useful for database setup, migrations, etc.
+
+```toml
+[hooks]
+prebuild = "sqlx database create && sqlx migrate run"
+```
+
+Or as a list:
+
+```toml
+[hooks]
+prebuild = [
+  "sqlx database create",
+  "sqlx migrate run",
+]
+```
+
+Hooks inherit the environment variables from `[sandbox.env]`.
 
 ## Usage
 
 ```
-rdeploy build   # Build on remote, copy binary back locally
-rdeploy run     # Build and run on remote
-rdeploy stop    # Stop the running process on remote
+rdeploy build          # Build on remote, copy binary back locally
+rdeploy build --debug  # Build with verbose output
+rdeploy run            # Build and run on remote
+rdeploy stop           # Stop the running process on remote
 ```
 
 ### Flags
 
 - `--target, -t` — Override the target host from `deploy.toml`
 - `--branch, -b` — Override the branch (defaults to current branch)
+- `--debug` — Enable debug output
