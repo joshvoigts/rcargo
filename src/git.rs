@@ -3,10 +3,9 @@ use std::{error::Error, path::Path, process::Command};
 
 /// Sync the local repo to the remote via rsync.
 ///
-/// Copies the working tree *and* `.git` so the remote has the same
-/// shape as the local repo (same branch, same unstaged changes).
-/// Gitignored paths are excluded so build artifacts, databases, etc.
-/// are untouched.
+/// Copies the working tree so the remote has the same shape as the
+/// local repo (same branch, same unstaged changes). Gitignored paths
+/// are excluded so build artifacts, databases, etc. are untouched.
 pub fn sync_repo(
   host: &str,
   remote_path: &str,
