@@ -32,9 +32,7 @@ pub fn scp_from(
 }
 
 /// Resolve `$HOME` on the remote host.
-pub fn resolve_home(
-  host: &str,
-) -> Result<String, Box<dyn Error>> {
+pub fn resolve_home(host: &str) -> Result<String, Box<dyn Error>> {
   ssh_capture(host, "echo $HOME")
 }
 

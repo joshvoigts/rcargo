@@ -40,8 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   // other tools that don't expand env vars work correctly.
   if remote_path.contains("$HOME") {
     let home = ssh::resolve_home(&cfg.target)?;
-    remote_path =
-      remote_path.replace("$HOME", &home);
+    remote_path = remote_path.replace("$HOME", &home);
   }
 
   let branch = match &app.branch {
