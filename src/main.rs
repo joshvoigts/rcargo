@@ -157,7 +157,7 @@ fn build_remote(
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
 
-  server::run_hooks(config, remote_path)?;
+  server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd = sandbox::build_cmd(config, remote_path, home, debug, &[]);
@@ -208,7 +208,7 @@ fn install_remote(
 
   git::sync_repo(&config.target, remote_path)?;
 
-  server::run_hooks(config, remote_path)?;
+  server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd =
@@ -239,7 +239,7 @@ fn test_remote(
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
 
-  server::run_hooks(config, remote_path)?;
+  server::run_hooks(config, remote_path, debug)?;
 
   println!("Running tests on remote...");
   let cmd =

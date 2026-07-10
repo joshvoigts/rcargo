@@ -5,9 +5,12 @@ use crate::ssh;
 use std::{error::Error, time::Duration};
 
 /// Run prebuild hooks on the remote host, outside the sandbox.
+///
+/// When `debug` is false, hook output is suppressed.
 pub fn run_hooks(
   config: &Config,
   remote_path: &str,
+  debug: bool,
 ) -> Result<(), Box<dyn Error>> {
   if let Some(ref hook) = config.hooks.prebuild {
     let env_prefix: String = config
@@ -30,8 +33,12 @@ pub fn run_hooks(
         hook.as_command()
       )
     };
-    println!("Running prebuild hook...");
-    ssh::ssh_run(&config.target, &hook_cmd)?;
+    if debug {
+      println!("Running prebuild hook...");
+      ssh::ssh_run(&config.target, &hook_cmd)?;
+    } else {
+      ssh::ssh_capture(&config.target, &hook_cmd)?;
+    }
   }
   Ok(())
 }
@@ -84,7 +91,7 @@ pub fn run_server(
 
   git::sync_repo(host, remote_path)?;
 
-  run_hooks(config, remote_path)?;
+  run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd = sandbox::build_cmd(config, remote_path, home, debug, &[]);
