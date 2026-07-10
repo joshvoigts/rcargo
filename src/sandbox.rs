@@ -15,10 +15,17 @@ pub fn build_cmd(config: &Config, remote_path: &str) -> String {
   args.push("--allow-env".into());
   args.push("--allow-write=$HOME/.cargo".into());
   args.push("--allow-write=$HOME/.rustup".into());
+  // Shell configs (various shells)
+  args.push("--allow-read=$HOME/.profile".into());
+  args.push("--allow-read=$HOME/.bashrc".into());
+  args.push("--allow-read=$HOME/.bash_profile".into());
+  args.push("--allow-read=$HOME/.zshrc".into());
+  args.push("--allow-read=$HOME/.zshenv".into());
+  // Git/cargo config
   args.push("--allow-read=$HOME/.gitconfig".into());
   args.push("--allow-read=$HOME/.config/git".into());
   args.push(
-    "--allow-net=crates.io,index.crates.io,static.rust-lang.org,github.com"
+    "--allow-net=crates.io,index.crates.io,static.crates.io,static.rust-lang.org,github.com"
       .into(),
   );
 
