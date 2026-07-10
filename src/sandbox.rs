@@ -1,20 +1,22 @@
 use crate::config::Config;
 
-/// Build a remote cargo build command, sandboxed with bwrap + zerobox proxy.
+/// Build a remote cargo build command, sandboxed with nono.
 ///
 /// `home` is the resolved `$HOME` on the remote host.
 ///
-/// We call bwrap directly for whitelist-based filesystem sandboxing
-/// instead of using zerobox's `--allow-read`, which on Linux creates
-/// an empty tmpfs root with individual `--ro-bind` mounts that break
-/// cargo/rustc binary execution (EACCES on execve).
+/// nono uses Landlock (Linux) / Seatbelt (macOS) for kernel-level
+/// filesystem sandboxing — deny-all reads, then whitelist specific
+/// paths. Unlike bubblewrap's mount-namespace approach, binary
+/// execution works because the filesystem is intact; the kernel
+/// just denies access to non-whitelisted paths.
 ///
-/// zerobox wraps the bwrap command with `--no-sandbox` to provide the
-/// network proxy (restricting outbound traffic to allowed domains).
+/// Network is blocked by default (--block-net), with specific
+/// domains whitelisted via --allow-domain.
 pub fn build_cmd(
   config: &Config,
   remote_path: &str,
   home: &str,
+  debug: bool,
 ) -> String {
   let inner = format!("cd {remote_path} && cargo build --release");
 
@@ -22,75 +24,74 @@ pub fn build_cmd(
     return inner;
   }
 
-  // bwrap: whitelist-based filesystem sandbox
-  let mut b = vec!["bwrap".to_string()];
-
-  b.push("--tmpfs".into());
-  b.push("/".into());
-
-  for p in ["/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc"] {
-    b.push("--ro-bind".into());
-    b.push(p.into());
-    b.push(p.into());
-  }
-
-  b.push("--dev".into());
-  b.push("/dev".into());
-  b.push("--proc".into());
-  b.push("/proc".into());
-  b.push("--tmpfs".into());
-  b.push("/tmp".into());
-
-  for p in [format!("{home}/.rustup"), format!("{home}/.cargo")] {
-    b.push("--ro-bind".into());
-    b.push(p.clone());
-    b.push(p);
-  }
-
-  for p in [
-    format!("{home}/.rustup"),
-    format!("{home}/.cargo"),
+  let mut args = vec![
+    "NONO_NO_UPDATE_CHECK=1".into(),
+    "nono".into(),
+    "run".into(),
+    "--silent".into(),
+    "--allow-cwd".into(),
+    "--workdir".into(),
     remote_path.to_string(),
-  ] {
-    b.push("--bind".into());
-    b.push(p.clone());
-    b.push(p);
-  }
+  ];
+
+  // Filesystem: read+write for cargo caches and project dir.
+  // nono's default profile includes system_read_linux_core
+  // which grants read access to /usr, /lib, /bin, /dev, /proc, etc.
+  args.push("--allow".into());
+  args.push(format!("{home}/.rustup"));
+  args.push("--allow".into());
+  args.push(format!("{home}/.cargo"));
+  args.push("--allow".into());
+  args.push(remote_path.to_string());
+  args.push("--allow".into());
+  args.push("/tmp".into());
+  args.push("--read".into());
+  args.push("/usr/libexec".into());
+  args.push("--read".into());
+  args.push("/usr/include".into());
 
   for w in &config.sandbox.allow.write {
-    b.push("--bind".into());
-    b.push(w.clone());
-    b.push(w.clone());
+    args.push("--allow".into());
+    args.push(w.clone());
   }
 
-  b.push("--die-with-parent".into());
-  b.push("--new-session".into());
-  b.push("--".into());
-  b.push("bash".into());
-  b.push("-c".into());
-  b.push(inner);
-
-  let bwrap_cmd = b.join(" ");
-
-  // zerobox: network proxy only
-  let mut net = vec![
-    "crates.io".to_string(),
-    "index.crates.io".to_string(),
-    "static.crates.io".to_string(),
-    "static.rust-lang.org".to_string(),
-    "github.com".to_string(),
+  // Network: allow only specific domains via proxy filtering.
+  // Everything else is blocked by the proxy.
+  let default_domains = [
+    "crates.io",
+    "index.crates.io",
+    "static.crates.io",
+    "static.rust-lang.org",
+    "github.com",
   ];
-  net.extend(config.sandbox.allow.net.iter().cloned());
+  for d in &default_domains {
+    args.push("--allow-domain".into());
+    args.push(d.to_string());
+  }
+  for d in &config.sandbox.allow.net {
+    args.push("--allow-domain".into());
+    args.push(d.clone());
+  }
 
-  let mut args = vec!["zerobox".to_string()];
-  args.push("--no-sandbox".into());
-  args.push("--allow-env".into());
-  args.push("--debug".into());
-  args.push(format!("--allow-net={}", net.join(",")));
   args.push("--".into());
-  args.push(bwrap_cmd);
+
+  let env_prefix: String = config
+    .sandbox
+    .env
+    .iter()
+    .map(|(k, v)| format!("export {k}='{v}'"))
+    .collect::<Vec<_>>()
+    .join(" && ");
+  let full_cmd = if env_prefix.is_empty() {
+    format!("bash -c \"{inner}\"")
+  } else {
+    format!("bash -c \"{env_prefix} && {inner}\"")
+  };
+  args.push(full_cmd);
 
   let cmd = args.join(" ");
-  eprintln!("[rdeploy] sandbox cmd: {cmd}");
+  if debug {
+    eprintln!("[rdeploy] sandbox cmd: {cmd}");
+  }
   cmd
 }

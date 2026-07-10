@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct Config {
   /// The target host to deploy to (anything you'd pass to `ssh`)
   pub target: String,
@@ -15,6 +15,34 @@ pub struct Config {
   /// Sandbox configuration for remote builds
   #[serde(default)]
   pub sandbox: Sandbox,
+
+  /// Shell hooks that run on the remote host outside the sandbox.
+  #[serde(default)]
+  pub hooks: Hooks,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct Hooks {
+  /// Command(s) to run after sync but before the sandboxed build.
+  #[serde(default)]
+  pub prebuild: Option<Hook>,
+}
+
+/// A hook command. Accepts either a single string or a list of strings.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum Hook {
+  Single(String),
+  List(Vec<String>),
+}
+
+impl Hook {
+  pub fn as_command(&self) -> String {
+    match self {
+      Hook::Single(s) => s.clone(),
+      Hook::List(v) => v.join(" && "),
+    }
+  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -24,6 +52,9 @@ pub struct Sandbox {
 
   #[serde(default)]
   pub allow: SandboxAllow,
+
+  #[serde(default)]
+  pub env: std::collections::HashMap<String, String>,
 }
 
 impl Default for Sandbox {
@@ -31,6 +62,7 @@ impl Default for Sandbox {
     Self {
       enabled: true,
       allow: Default::default(),
+      env: Default::default(),
     }
   }
 }

@@ -19,6 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
       target: String::new(),
       remote_path: None,
       sandbox: Default::default(),
+      hooks: Default::default(),
     },
   };
 
@@ -51,12 +52,22 @@ fn main() -> Result<(), Box<dyn Error>> {
   match app.cmd {
     Command::Build => {
       build_remote(
-        &cfg, &remote_path, &home, &branch, &package_name,
+        &cfg,
+        &remote_path,
+        &home,
+        &branch,
+        &package_name,
+        app.debug,
       )?;
     }
     Command::Run => {
       server::run_server(
-        &cfg, &remote_path, &home, &branch, &package_name,
+        &cfg,
+        &remote_path,
+        &home,
+        &branch,
+        &package_name,
+        app.debug,
       )?;
     }
     Command::Stop => {
@@ -86,13 +97,36 @@ fn build_remote(
   config: &Config,
   remote_path: &str,
   home: &str,
-  branch: &str,
+  _branch: &str,
   package_name: &str,
+  debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(&config.target, remote_path, branch)?;
+  git::sync_repo(&config.target, remote_path)?;
+
+  // Run prebuild hooks outside the sandbox — user-specified
+  // setup commands that may need full access.
+  if let Some(ref hook) = config.hooks.prebuild {
+    let env_prefix: String = config
+      .sandbox
+      .env
+      .iter()
+      .map(|(k, v)| format!("export {k}='{v}'"))
+      .collect::<Vec<_>>()
+      .join(" && ");
+    let hook_cmd = if env_prefix.is_empty() {
+      format!("cd {remote_path} && {}", hook.as_command())
+    } else {
+      format!(
+        "cd {remote_path} && {env_prefix} && {}",
+        hook.as_command()
+      )
+    };
+    println!("Running prebuild hook...");
+    ssh::ssh_run(&config.target, &hook_cmd)?;
+  }
 
   println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path, home);
+  let cmd = sandbox::build_cmd(config, remote_path, home, debug);
   ssh::ssh_run(&config.target, &cmd)?;
 
   std::fs::create_dir_all("builds")?;

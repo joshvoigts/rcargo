@@ -17,6 +17,10 @@ pub struct App {
   /// Override the branch (defaults to current branch)
   #[arg(long, short)]
   pub branch: Option<String>,
+
+  /// Enable debug output
+  #[arg(long)]
+  pub debug: bool,
 }
 
 #[derive(Subcommand)]

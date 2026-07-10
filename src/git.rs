@@ -10,12 +10,11 @@ use std::{error::Error, path::Path, process::Command};
 pub fn sync_repo(
   host: &str,
   remote_path: &str,
-  branch: &str,
 ) -> Result<(), Box<dyn Error>> {
   // Ensure remote directory exists
   ssh_run(host, &format!("mkdir -p {remote_path}"))?;
 
-  let mut rsync_args = vec!["-avz", "--delete"];
+  let mut rsync_args = vec!["-az", "--delete", "--exclude=.git"];
 
   if Path::new(".gitignore").exists() {
     rsync_args.push("--exclude-from=.gitignore");
@@ -31,13 +30,6 @@ pub fn sync_repo(
   if !status.success() {
     return Err("rsync failed".into());
   }
-
-  // Ensure the correct branch is checked out on the remote
-  println!("Checking out branch '{branch}' on remote...");
-  ssh_run(
-    host,
-    &format!("cd {remote_path} && git checkout {branch}"),
-  )?;
 
   Ok(())
 }

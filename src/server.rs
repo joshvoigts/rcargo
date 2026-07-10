@@ -41,17 +41,18 @@ pub fn run_server(
   config: &Config,
   remote_path: &str,
   home: &str,
-  branch: &str,
+  _branch: &str,
   package_name: &str,
+  debug: bool,
 ) -> Result<(), Box<dyn Error>> {
   let host = &config.target;
 
   stop_server(host, remote_path)?;
 
-  git::sync_repo(host, remote_path, branch)?;
+  git::sync_repo(host, remote_path)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path, home);
+  let cmd = sandbox::build_cmd(config, remote_path, home, debug);
   ssh::ssh_run(host, &cmd)?;
 
   let bin_path =
