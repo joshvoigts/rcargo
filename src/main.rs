@@ -72,14 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   match app.cmd {
     Command::Build => {
-      build_remote(
-        &cfg,
-        &remote_path,
-        &home,
-        &branch,
-        &package_name,
-        app.debug,
-      )?;
+      build_remote(&cfg, &remote_path, &home, app.debug)?;
     }
     Command::Run => {
       server::run_server(
@@ -129,8 +122,6 @@ fn build_remote(
   config: &Config,
   remote_path: &str,
   home: &str,
-  _branch: &str,
-  package_name: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
@@ -141,15 +132,7 @@ fn build_remote(
   let cmd = sandbox::build_cmd(config, remote_path, home, debug);
   ssh::ssh_run(&config.target, &cmd)?;
 
-  std::fs::create_dir_all("builds")?;
-  let remote_bin =
-    format!("{remote_path}/target/release/{package_name}");
-  let local_bin = format!("builds/{package_name}");
-
-  println!("Copying binary back...");
-  ssh::scp_from(&config.target, &remote_bin, &local_bin)?;
-
-  println!("Build complete! Binary at: {local_bin}");
+  println!("Build complete!");
   Ok(())
 }
 
