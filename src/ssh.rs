@@ -59,8 +59,17 @@ pub fn ssh_capture(
   let output = Command::new("ssh").args([host, cmd]).output()?;
 
   if !output.status.success() {
+    let status = output.status;
     let err = String::from_utf8_lossy(&output.stderr);
-    return Err(format!("SSH command failed: {err}").into());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut msg = format!("SSH command failed with status: {status}");
+    if !err.is_empty() {
+      msg.push_str(&format!("\nstderr: {err}"));
+    }
+    if !stdout.is_empty() {
+      msg.push_str(&format!("\nstdout: {stdout}"));
+    }
+    return Err(msg.into());
   }
 
   Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
