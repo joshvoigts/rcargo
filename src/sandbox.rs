@@ -95,6 +95,14 @@ pub fn test_cmd(
   cmd
 }
 
+/// Build a remote cargo check command (no sandbox needed for read-only check).
+pub fn check_cmd(remote_path: &str) -> String {
+  format!(
+    "cd {} && cargo check --workspace",
+    shell_quote(remote_path)
+  )
+}
+
 /// Build a remote cargo build command, sandboxed with nono.
 ///
 /// `home` is the resolved `$HOME` on the remote host.

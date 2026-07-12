@@ -73,6 +73,7 @@ Hooks inherit the environment variables from `[sandbox.env]`.
 ```
 rdeploy build          # Build on remote
 rdeploy build --debug  # Build with verbose output
+rdeploy check          # Check code on remote (cargo check)
 rdeploy run            # Build and run on remote
 rdeploy stop           # Stop the running process on remote
 ```

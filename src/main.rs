@@ -74,6 +74,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     Command::Build => {
       build_remote(&cfg, &remote_path, &home, app.debug)?;
     }
+    Command::Check => {
+      check_remote(&cfg, &remote_path, app.debug)?;
+    }
     Command::Run => {
       server::run_server(
         &cfg,
@@ -116,6 +119,23 @@ fn detect_package_name() -> Result<String, Box<dyn Error>> {
   let content = std::fs::read_to_string("Cargo.toml")?;
   let cargo: CargoToml = toml::from_str(&content)?;
   Ok(cargo.package.name)
+}
+
+fn check_remote(
+  config: &Config,
+  remote_path: &str,
+  debug: bool,
+) -> Result<(), Box<dyn Error>> {
+  git::sync_repo(&config.target, remote_path)?;
+
+  server::run_hooks(config, remote_path, debug)?;
+
+  println!("Checking on remote...");
+  let cmd = sandbox::check_cmd(remote_path);
+  ssh::ssh_run(&config.target, &cmd)?;
+
+  println!("Check complete!");
+  Ok(())
 }
 
 fn build_remote(

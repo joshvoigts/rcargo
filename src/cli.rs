@@ -34,8 +34,10 @@ pub struct App {
 
 #[derive(Subcommand)]
 pub enum Command {
-  /// Build on remote and copy binary back
+  /// Build on remote
   Build,
+  /// Check code on remote (cargo check)
+  Check,
   /// Build and run on remote
   Run,
   /// Stop the running process on remote
