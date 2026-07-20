@@ -30,7 +30,11 @@ pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
   let status = child.wait()?;
   if !status.success() {
     return Err(
-      format!("SSH command failed with status: {status}").into(),
+      format!(
+        "Remote command failed with exit code: {}",
+        status.code().unwrap_or(-1)
+      )
+      .into(),
     );
   }
 
@@ -125,7 +129,10 @@ pub fn ssh_capture(
     let status = output.status;
     let err = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut msg = format!("SSH command failed with status: {status}");
+    let mut msg = format!(
+      "Remote command failed with exit code: {}",
+      status.code().unwrap_or(-1)
+    );
     if !err.is_empty() {
       msg.push_str(&format!("\nstderr: {err}"));
     }
