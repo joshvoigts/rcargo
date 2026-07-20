@@ -4,3 +4,4 @@
 /.cargo/
 /target
 db.*
+deploy.toml
