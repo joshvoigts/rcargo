@@ -20,7 +20,7 @@ pub fn test_cmd(
   };
 
   let inner = format!(
-    "cd {} && cargo test --workspace -q{args_str}",
+    "cd {} && cargo test{args_str}",
     shell_quote(remote_path)
   );
 
