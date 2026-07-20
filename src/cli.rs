@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-  name = "rdeploy",
+  name = "rcargo",
   about = "Deploy or build rust projects on remote servers",
   long_about = "A tool for deploying or building rust projects on remote servers.\n\n\
     Configuration via deploy.toml:\n  \

@@ -82,7 +82,7 @@ pub struct SandboxAllow {
 
 impl Config {
   pub fn load() -> Result<Self, Box<dyn Error>> {
-    let candidates = ["deploy.toml", "rdeploy.toml"];
+    let candidates = ["deploy.toml", "rcargo.toml"];
     let config_path =
       candidates.iter().map(Path::new).find(|p| p.exists());
     let config_path = match config_path {

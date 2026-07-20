@@ -90,7 +90,7 @@ pub fn test_cmd(
 
   let cmd = args.join(" ");
   if debug {
-    eprintln!("[rdeploy] sandbox cmd: {cmd}");
+    eprintln!("[rcargo] sandbox cmd: {cmd}");
   }
   cmd
 }
@@ -197,7 +197,7 @@ pub fn build_cmd(
 
   let cmd = args.join(" ");
   if debug {
-    eprintln!("[rdeploy] sandbox cmd: {cmd}");
+    eprintln!("[rcargo] sandbox cmd: {cmd}");
   }
   cmd
 }

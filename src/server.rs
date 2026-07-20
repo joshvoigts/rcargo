@@ -48,7 +48,7 @@ pub fn stop_server(
   remote_path: &str,
 ) -> Result<(), Box<dyn Error>> {
   let pid_file =
-    ssh::shell_quote(&format!("{remote_path}/rdeploy.pid"));
+    ssh::shell_quote(&format!("{remote_path}/rcargo.pid"));
 
   let result = ssh::ssh_capture(
     host,
@@ -101,9 +101,9 @@ pub fn run_server(
     "{remote_path}/target/release/{package_name}"
   ));
   let pid_file =
-    ssh::shell_quote(&format!("{remote_path}/rdeploy.pid"));
+    ssh::shell_quote(&format!("{remote_path}/rcargo.pid"));
   let log_file =
-    ssh::shell_quote(&format!("{remote_path}/rdeploy.pid.log"));
+    ssh::shell_quote(&format!("{remote_path}/rcargo.pid.log"));
 
   let cd_path = ssh::shell_quote(remote_path);
   ssh::ssh_run(

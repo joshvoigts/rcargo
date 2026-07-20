@@ -1,5 +1,6 @@
 [package]
-name = "rdeploy"
+name = "rcargo"
+description = "Run cargo on a remote host and stream output back locally"
 version = "0.1.0"
 edition = "2021"
 

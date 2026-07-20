@@ -1,4 +1,4 @@
-# rdeploy
+# rcargo
 
 Build and deploy rust projects on remote servers via SSH.
 
@@ -71,11 +71,11 @@ Hooks inherit the environment variables from `[sandbox.env]`.
 ## Usage
 
 ```
-rdeploy build          # Build on remote
-rdeploy build --debug  # Build with verbose output
-rdeploy check          # Check code on remote (cargo check)
-rdeploy run            # Build and run on remote
-rdeploy stop           # Stop the running process on remote
+rcargo build          # Build on remote
+rcargo build --debug  # Build with verbose output
+rcargo check          # Check code on remote (cargo check)
+rcargo run            # Build and run on remote
+rcargo stop           # Stop the running process on remote
 ```
 
 ### Flags
