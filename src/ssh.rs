@@ -1,5 +1,5 @@
 use shell_quote::Sh;
-use std::io::{self, BufReader, Read, Write};
+use std::io::{self, Read, Write};
 use std::{error::Error, process::Command};
 
 /// Quote a string for safe use in POSIX shell commands.
@@ -12,7 +12,7 @@ pub fn shell_quote(s: &str) -> String {
 ///
 /// Allocates a pseudo-terminal (`-t`) so remote programs can emit
 /// colors. Stderr from the PTY teardown ("Connection closed") is
-/// suppressed because it's cosmetic noise.
+/// suppressed on success because it's cosmetic noise.
 ///
 /// SGR (color/style) escape sequences are preserved; all other CSI
 /// sequences that leak through the PTY (DSR, DA, cursor movement, etc.)
@@ -21,24 +21,78 @@ pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
   let mut child = Command::new("ssh")
     .args(["-t", host, cmd])
     .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::null())
+    .stderr(std::process::Stdio::piped())
     .spawn()?;
 
-  let stdout = child.stdout.take().unwrap();
-  filter_sgr(BufReader::new(stdout), io::stdout())?;
+  let mut stdout = child.stdout.take().unwrap();
+  let mut stderr = child.stderr.take().unwrap();
+
+  // Drain stderr in the background so the child never blocks on it.
+  let stderr_handle = std::thread::spawn(move || {
+    let mut buf = Vec::new();
+    let _ = stderr.read_to_end(&mut buf);
+    buf
+  });
+
+  // Stream stdout (with SGR filtering) until EOF.
+  filter_sgr(&mut stdout, io::stdout())?;
 
   let status = child.wait()?;
+  let stderr_bytes = stderr_handle.join().unwrap_or_default();
+
   if !status.success() {
+    let err = strip_ansi(&stderr_bytes);
+    // Drop SSH PTY warnings — they're noise when -t can't allocate.
+    let err = err
+      .lines()
+      .filter(|l| {
+        !l.contains("Pseudo-terminal will not be allocated")
+          && !l.contains("Connection to")
+          && !l.contains("closed.")
+      })
+      .collect::<Vec<_>>()
+      .join("\n");
     return Err(
       format!(
-        "Remote command failed with exit code: {}",
-        status.code().unwrap_or(-1)
+        "Remote command failed with exit code: {}\n{}",
+        status.code().unwrap_or(-1),
+        err.trim(),
       )
       .into(),
     );
   }
 
   Ok(())
+}
+
+/// Strip all ANSI escape sequences from a byte buffer, producing plain text.
+fn strip_ansi(input: &[u8]) -> String {
+  let mut output = Vec::new();
+  let mut i = 0;
+  while i < input.len() {
+    if input[i] == 0x1b {
+      // Skip ESC — if followed by '[', eat until a final byte.
+      if i + 1 < input.len() && input[i + 1] == b'[' {
+        i += 2;
+        while i < input.len()
+          && !input[i].is_ascii_alphabetic()
+          && input[i] != b'~'
+        {
+          i += 1;
+        }
+        if i < input.len() {
+          i += 1; // skip the final byte
+        }
+      } else {
+        // Non-CSI escape — skip two bytes.
+        i += 2;
+      }
+    } else {
+      output.push(input[i]);
+      i += 1;
+    }
+  }
+  String::from_utf8_lossy(&output).to_string()
 }
 
 /// Whitelist CSI escape sequences, allowing only SGR (Select Graphic
@@ -51,7 +105,7 @@ pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
 /// colours are preserved, while discarding every other CSI sequence
 /// (DSR `ESC[row;colR`, DA `ESC[?...c`, cursor movement, etc.).
 fn filter_sgr(
-  mut reader: impl Read,
+  reader: &mut impl Read,
   mut writer: impl Write,
 ) -> io::Result<()> {
   const S_NORMAL: u8 = 0;
@@ -151,7 +205,8 @@ mod tests {
 
   fn filter(input: &[u8]) -> Vec<u8> {
     let mut output = Vec::new();
-    filter_sgr(input, &mut output).unwrap();
+    let mut input = input;
+    filter_sgr(&mut input, &mut output).unwrap();
     output
   }
 
