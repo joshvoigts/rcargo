@@ -20,7 +20,7 @@ pub fn test_cmd(
   };
 
   let inner = format!(
-    "cd {} && cargo test{args_str}",
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo test{args_str}",
     shell_quote(remote_path)
   );
 
@@ -98,7 +98,7 @@ pub fn test_cmd(
 /// Build a remote cargo check command (no sandbox needed for read-only check).
 pub fn check_cmd(remote_path: &str) -> String {
   format!(
-    "cd {} && cargo check --workspace",
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo check --workspace",
     shell_quote(remote_path)
   )
 }
@@ -122,7 +122,7 @@ pub fn build_cmd(
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && cargo build --release",
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo build --release",
     shell_quote(remote_path)
   );
 
