@@ -3,6 +3,8 @@ mod config;
 mod git;
 mod sandbox;
 mod server;
+mod shim;
+mod shim_embed;
 mod ssh;
 
 use crate::config::Config;
@@ -12,6 +14,12 @@ use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
   let app = App::parse();
+
+  if app.shim {
+    // Shim mode: read protocol from stdin, run sandboxed commands
+    protocol_shim_main();
+    return Ok(());
+  }
 
   let mut cfg = match Config::load() {
     Ok(c) => c,
@@ -71,13 +79,13 @@ fn main() -> Result<(), Box<dyn Error>> {
   };
 
   match app.cmd {
-    Command::Build => {
+    Some(Command::Build) => {
       build_remote(&cfg, &remote_path, &home, app.debug)?;
     }
-    Command::Check => {
+    Some(Command::Check) => {
       check_remote(&cfg, &remote_path, app.debug)?;
     }
-    Command::Run => {
+    Some(Command::Run) => {
       server::run_server(
         &cfg,
         &remote_path,
@@ -87,10 +95,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         app.debug,
       )?;
     }
-    Command::Stop => {
+    Some(Command::Stop) => {
       server::stop_server(&cfg.target, &remote_path)?;
     }
-    Command::Test { args } => {
+    Some(Command::Test { args }) => {
       test_remote(
         &cfg,
         &remote_path,
@@ -99,6 +107,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         &args,
         app.debug,
       )?;
+    }
+    None => {
+      eprintln!("No command specified. Use --help for usage.");
+      std::process::exit(1);
     }
   }
 
@@ -126,7 +138,10 @@ fn check_remote(
   remote_path: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(&config.target, remote_path)?;
+  if shim::sync(config, remote_path).is_err() {
+    eprintln!("[rcargo] shim sync failed, falling back to rsync");
+    git::sync_repo(&config.target, remote_path)?;
+  }
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -144,13 +159,30 @@ fn build_remote(
   home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(&config.target, remote_path)?;
+  if shim::sync(config, remote_path).is_err() {
+    eprintln!("[rcargo] shim sync failed, falling back to rsync");
+    git::sync_repo(&config.target, remote_path)?;
+  }
 
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path, home, debug);
-  ssh::ssh_run(&config.target, &cmd)?;
+  let cmd = sandbox::inner_cmd(config, remote_path, home, debug);
+  match shim::run(config, remote_path, home, &cmd, debug) {
+    Ok(code) if code == 0 => {}
+    Ok(code) => {
+      return Err(
+        format!("Remote build failed with exit code: {code}").into(),
+      );
+    }
+    Err(e) => {
+      eprintln!(
+        "[rcargo] shim run failed: {e}, falling back to rsync + nono"
+      );
+      let cmd = sandbox::build_cmd(config, remote_path, home, debug);
+      ssh::ssh_run(&config.target, &cmd)?;
+    }
+  }
 
   println!("Build complete!");
   Ok(())
@@ -164,15 +196,92 @@ fn test_remote(
   extra_args: &[String],
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(&config.target, remote_path)?;
+  if shim::sync(config, remote_path).is_err() {
+    eprintln!("[rcargo] shim sync failed, falling back to rsync");
+    git::sync_repo(&config.target, remote_path)?;
+  }
 
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Running tests on remote...");
-  let cmd =
-    sandbox::test_cmd(config, remote_path, home, extra_args, debug);
-  ssh::ssh_run(&config.target, &cmd)?;
+  let cmd = sandbox::inner_test_cmd(
+    config,
+    remote_path,
+    home,
+    extra_args,
+    debug,
+  );
+  match shim::run(config, remote_path, home, &cmd, debug) {
+    Ok(code) if code == 0 => {}
+    Ok(code) => {
+      return Err(
+        format!("Remote tests failed with exit code: {code}").into(),
+      );
+    }
+    Err(e) => {
+      eprintln!(
+        "[rcargo] shim run failed: {e}, falling back to rsync + nono"
+      );
+      let cmd = sandbox::test_cmd(
+        config,
+        remote_path,
+        home,
+        extra_args,
+        debug,
+      );
+      ssh::ssh_run(&config.target, &cmd)?;
+    }
+  }
 
   println!("Tests complete!");
   Ok(())
+}
+
+fn protocol_shim_main() {
+  use rcargo_protocol::{Message, ProtocolReader, ProtocolWriter};
+  use std::process::Command;
+
+  let stdin = std::io::stdin();
+  let stdout = std::io::stdout();
+  let mut reader = ProtocolReader::new(stdin.lock());
+  let mut writer = ProtocolWriter::new(stdout.lock());
+
+  if let Err(e) = writer.send(&Message::Handshake {
+    version: rcargo_protocol::VERSION.to_string(),
+    os: std::env::consts::OS.to_string(),
+    arch: std::env::consts::ARCH.to_string(),
+  }) {
+    eprintln!("[shim] failed to send handshake: {e}");
+    std::process::exit(1);
+  }
+
+  loop {
+    let msg = match reader.receive() {
+      Ok(m) => m,
+      Err(e) => {
+        eprintln!("[shim] read error: {e}");
+        break;
+      }
+    };
+    match msg {
+      Message::Run { command } => {
+        let status = Command::new("bash")
+          .args(["--norc", "--noprofile", "-c", &command])
+          .status();
+        let code = match status {
+          Ok(s) => s.code().unwrap_or(1),
+          Err(e) => {
+            eprintln!("[shim] exec error: {e}");
+            1
+          }
+        };
+        std::process::exit(code);
+      }
+      _ => {
+        let _ = writer.send(&Message::Error(
+          "unexpected message in --shim mode".into(),
+        ));
+      }
+    }
+  }
 }

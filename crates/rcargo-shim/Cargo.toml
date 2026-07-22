@@ -1,0 +1,13 @@
+[package]
+name = "rcargo-shim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base64 = "0.22.1"
+fast_rsync = "0.2.0"
+rcargo-protocol = { path = "../rcargo-protocol" }
+sha2 = "0.10.8"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4.5"

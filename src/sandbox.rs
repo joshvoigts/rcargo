@@ -103,6 +103,55 @@ pub fn check_cmd(remote_path: &str) -> String {
   )
 }
 
+/// Build the inner cargo command (without nono wrapper).
+/// Used by the shim for sandboxed execution.
+pub fn inner_cmd(
+  config: &Config,
+  remote_path: &str,
+  _home: &str,
+  _debug: bool,
+) -> String {
+  let inner = format!(
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo build --release",
+    shell_quote(remote_path)
+  );
+  build_inner_full(config, &inner)
+}
+
+/// Build the inner cargo test command (without nono wrapper).
+pub fn inner_test_cmd(
+  config: &Config,
+  remote_path: &str,
+  _home: &str,
+  extra_args: &[String],
+  _debug: bool,
+) -> String {
+  let args_str = if extra_args.is_empty() {
+    String::new()
+  } else {
+    let quoted: Vec<String> =
+      extra_args.iter().map(|a| shell_quote(a)).collect();
+    format!(" {}", quoted.join(" "))
+  };
+  let inner = format!(
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo test{args_str}",
+    shell_quote(remote_path)
+  );
+  build_inner_full(config, &inner)
+}
+
+fn build_inner_full(config: &Config, inner: &str) -> String {
+  let mut env_vars: Vec<String> = config
+    .sandbox
+    .env
+    .iter()
+    .map(|(k, v)| format!("export {k}={}", shell_quote(v)))
+    .collect();
+  env_vars.push("export CARGO_TERM_COLOR=always".into());
+  let env_prefix = env_vars.join(" && ");
+  format!("{env_prefix} && {inner}")
+}
+
 /// Build a remote cargo build command, sandboxed with nono.
 ///
 /// `home` is the resolved `$HOME` on the remote host.

@@ -89,13 +89,30 @@ pub fn run_server(
 
   stop_server(host, remote_path)?;
 
-  git::sync_repo(host, remote_path)?;
+  if crate::shim::sync(config, remote_path).is_err() {
+    eprintln!("[rcargo] shim sync failed, falling back to rsync");
+    git::sync_repo(host, remote_path)?;
+  }
 
   run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path, home, debug);
-  ssh::ssh_run(host, &cmd)?;
+  let cmd = sandbox::inner_cmd(config, remote_path, home, debug);
+  match crate::shim::run(config, remote_path, home, &cmd, debug) {
+    Ok(code) if code == 0 => {}
+    Ok(code) => {
+      return Err(
+        format!("Remote build failed with exit code: {code}").into(),
+      );
+    }
+    Err(e) => {
+      eprintln!(
+        "[rcargo] shim run failed: {e}, falling back to rsync + nono"
+      );
+      let cmd = sandbox::build_cmd(config, remote_path, home, debug);
+      ssh::ssh_run(host, &cmd)?;
+    }
+  }
 
   let bin_path = ssh::shell_quote(&format!(
     "{remote_path}/target/release/{package_name}"

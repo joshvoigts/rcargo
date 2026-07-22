@@ -17,7 +17,7 @@ use clap::{Parser, Subcommand};
 )]
 pub struct App {
   #[command(subcommand)]
-  pub cmd: Command,
+  pub cmd: Option<Command>,
 
   /// Override the target from deploy.toml
   #[arg(long, short)]
@@ -30,6 +30,10 @@ pub struct App {
   /// Enable debug output
   #[arg(long)]
   pub debug: bool,
+
+  /// Run in shim mode (for local testing)
+  #[arg(long)]
+  pub shim: bool,
 }
 
 #[derive(Subcommand)]
