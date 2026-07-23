@@ -103,6 +103,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     Command::Undeploy => {
       deploy::undeploy(&cfg, &remote_path, &home, &package_name)?;
     }
+    Command::Status => {
+      server::status_server(
+        &cfg.target,
+        &remote_path,
+        &package_name,
+      )?;
+    }
     Command::Test { args } => {
       test_remote(
         &cfg,

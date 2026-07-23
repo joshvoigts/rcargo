@@ -90,6 +90,56 @@ pub fn stop_server(
   Ok(())
 }
 
+pub fn status_server(
+  host: &str,
+  remote_path: &str,
+  package_name: &str,
+) -> Result<(), Box<dyn Error>> {
+  let svc = format!("{package_name}.service");
+
+  // Check if systemd service exists
+  let state = ssh::ssh_capture(
+    host,
+    &format!("systemctl --user is-active {svc} 2>/dev/null"),
+  );
+
+  if let Ok(ref s) = state {
+    if !s.is_empty() {
+      let _ =
+        ssh::ssh_run(host, &format!("systemctl --user status {svc}"));
+      return Ok(());
+    }
+  }
+
+  // Fall back to PID file
+  let pid_file =
+    ssh::shell_quote(&format!("{remote_path}/rcargo.pid"));
+  let result = ssh::ssh_capture(
+    host,
+    &format!("test -f {pid_file} && echo exists"),
+  );
+
+  if matches!(&result, Ok(s) if s == "exists") {
+    let pid = ssh::ssh_capture(host, &format!("cat {pid_file}"))?;
+    let running = ssh::ssh_capture(
+      host,
+      &format!("kill -0 {pid} 2>/dev/null && echo running"),
+    );
+
+    if matches!(&running, Ok(s) if s == "running") {
+      println!("Process {package_name} is running (PID {pid})");
+    } else {
+      println!(
+        "Process {package_name} has stale PID file (PID {pid})"
+      );
+    }
+  } else {
+    println!("No running process found");
+  }
+
+  Ok(())
+}
+
 pub fn run_server(
   config: &Config,
   remote_path: &str,

@@ -56,4 +56,6 @@ pub enum Command {
   Deploy,
   /// Remove systemd service and installed binary
   Undeploy,
+  /// Show status of deployed or running process
+  Status,
 }
