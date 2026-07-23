@@ -98,6 +98,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &branch,
         &args,
         app.debug,
+        std::time::Duration::from_secs(app.timeout),
       )?;
     }
   }
@@ -163,6 +164,7 @@ fn test_remote(
   _branch: &str,
   extra_args: &[String],
   debug: bool,
+  timeout: std::time::Duration,
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
 
@@ -171,7 +173,7 @@ fn test_remote(
   println!("Running tests on remote...");
   let cmd =
     sandbox::test_cmd(config, remote_path, home, extra_args, debug);
-  ssh::ssh_run(&config.target, &cmd)?;
+  ssh::ssh_run_with_timeout(&config.target, &cmd, timeout)?;
 
   println!("Tests complete!");
   Ok(())

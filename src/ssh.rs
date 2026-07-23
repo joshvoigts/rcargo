@@ -1,5 +1,6 @@
 use shell_quote::Sh;
 use std::io::{self, Read, Write};
+use std::time::{Duration, Instant};
 use std::{error::Error, process::Command};
 
 /// Quote a string for safe use in POSIX shell commands.
@@ -43,6 +44,86 @@ pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
   if !status.success() {
     let err = strip_ansi(&stderr_bytes);
     // Drop SSH PTY warnings — they're noise when -t can't allocate.
+    let err = err
+      .lines()
+      .filter(|l| {
+        !l.contains("Pseudo-terminal will not be allocated")
+          && !l.contains("Connection to")
+          && !l.contains("closed.")
+      })
+      .collect::<Vec<_>>()
+      .join("\n");
+    return Err(
+      format!(
+        "Remote command failed with exit code: {}\n{}",
+        status.code().unwrap_or(-1),
+        err.trim(),
+      )
+      .into(),
+    );
+  }
+
+  Ok(())
+}
+
+/// Run a command on the remote via SSH with a timeout.
+///
+/// Like [`ssh_run`], but kills the SSH process if it does not
+/// complete within `timeout`.
+pub fn ssh_run_with_timeout(
+  host: &str,
+  cmd: &str,
+  timeout: Duration,
+) -> Result<(), Box<dyn Error>> {
+  let mut child = Command::new("ssh")
+    .args(["-t", host, cmd])
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()?;
+
+  let mut stdout = child.stdout.take().unwrap();
+  let mut stderr = child.stderr.take().unwrap();
+
+  let stderr_handle = std::thread::spawn(move || {
+    let mut buf = Vec::new();
+    let _ = stderr.read_to_end(&mut buf);
+    buf
+  });
+
+  let stdout_handle =
+    std::thread::spawn(move || -> io::Result<()> {
+      filter_sgr(&mut stdout, io::stdout())
+    });
+
+  let start = Instant::now();
+  let timed_out = loop {
+    match child.try_wait()? {
+      Some(_status) => break false,
+      None => {
+        if start.elapsed() >= timeout {
+          child.kill()?;
+          break true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+      }
+    }
+  };
+
+  let status = child.wait()?;
+  let _ = stdout_handle.join();
+  let stderr_bytes = stderr_handle.join().unwrap_or_default();
+
+  if timed_out {
+    return Err(
+      format!(
+        "Remote command timed out after {} seconds",
+        timeout.as_secs()
+      )
+      .into(),
+    );
+  }
+  if !status.success() {
+    let err = strip_ansi(&stderr_bytes);
     let err = err
       .lines()
       .filter(|l| {

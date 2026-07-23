@@ -30,6 +30,10 @@ pub struct App {
   /// Enable debug output
   #[arg(long)]
   pub debug: bool,
+
+  /// Timeout in seconds for remote commands (default: 600)
+  #[arg(long, default_value_t = 600)]
+  pub timeout: u64,
 }
 
 #[derive(Subcommand)]
