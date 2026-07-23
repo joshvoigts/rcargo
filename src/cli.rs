@@ -52,4 +52,8 @@ pub enum Command {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     args: Vec<String>,
   },
+  /// Install binary and set up as systemd user service
+  Deploy,
+  /// Remove systemd service and installed binary
+  Undeploy,
 }

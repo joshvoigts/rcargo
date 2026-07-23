@@ -46,7 +46,20 @@ pub fn run_hooks(
 pub fn stop_server(
   host: &str,
   remote_path: &str,
+  package_name: &str,
 ) -> Result<(), Box<dyn Error>> {
+  // Try systemd service first
+  let svc = format!("{package_name}.service");
+  let systemd_result = ssh::ssh_capture(
+    host,
+    &format!("systemctl --user is-active {svc} 2>/dev/null"),
+  );
+  if matches!(&systemd_result, Ok(s) if s == "active") {
+    ssh::ssh_run(host, &format!("systemctl --user stop {svc}"))?;
+    println!("Service {svc} stopped");
+    return Ok(());
+  }
+
   let pid_file =
     ssh::shell_quote(&format!("{remote_path}/rcargo.pid"));
 
@@ -87,7 +100,7 @@ pub fn run_server(
 ) -> Result<(), Box<dyn Error>> {
   let host = &config.target;
 
-  stop_server(host, remote_path)?;
+  stop_server(host, remote_path, package_name)?;
 
   git::sync_repo(host, remote_path)?;
 

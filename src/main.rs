@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod deploy;
 mod git;
 mod sandbox;
 mod server;
@@ -88,7 +89,19 @@ fn main() -> Result<(), Box<dyn Error>> {
       )?;
     }
     Command::Stop => {
-      server::stop_server(&cfg.target, &remote_path)?;
+      server::stop_server(&cfg.target, &remote_path, &package_name)?;
+    }
+    Command::Deploy => {
+      deploy::deploy(
+        &cfg,
+        &remote_path,
+        &home,
+        &package_name,
+        app.debug,
+      )?;
+    }
+    Command::Undeploy => {
+      deploy::undeploy(&cfg, &remote_path, &home, &package_name)?;
     }
     Command::Test { args } => {
       test_remote(
