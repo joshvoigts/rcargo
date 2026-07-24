@@ -105,8 +105,12 @@ pub fn status_server(
 
   if let Ok(ref s) = state {
     if !s.is_empty() {
-      let _ =
-        ssh::ssh_run(host, &format!("systemctl --user status {svc}"));
+      let _ = ssh::ssh_run(
+        host,
+        &format!(
+          "SYSTEMD_PAGER=cat systemctl --user status -l {svc}"
+        ),
+      );
       return Ok(());
     }
   }
