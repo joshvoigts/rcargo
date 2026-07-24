@@ -209,13 +209,17 @@ pub fn install_cmd(
   config: &Config,
   remote_path: &str,
   home: &str,
-  bin_name: &str,
+  package: Option<&str>,
   debug: bool,
 ) -> String {
+  let install_path = match package {
+    Some(pkg) => format!("{remote_path}/{pkg}"),
+    None => remote_path.to_string(),
+  };
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo install --path . --bin {} --force",
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo install --path {} --force",
     shell_quote(remote_path),
-    shell_quote(bin_name)
+    shell_quote(&install_path)
   );
 
   if !config.sandbox.enabled {

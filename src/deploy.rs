@@ -44,7 +44,7 @@ pub fn deploy(
   config: &Config,
   remote_path: &str,
   home: &str,
-  _package: Option<&str>,
+  package: Option<&str>,
   bin_name: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -60,7 +60,7 @@ pub fn deploy(
 
   println!("Installing on remote...");
   let cmd =
-    sandbox::install_cmd(config, remote_path, home, bin_name, debug);
+    sandbox::install_cmd(config, remote_path, home, package, debug);
   ssh::ssh_run(host, &cmd)?;
 
   println!("Configuring systemd service...");
