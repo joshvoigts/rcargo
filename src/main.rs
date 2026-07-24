@@ -87,6 +87,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     Command::Check => {
       check_remote(&cfg, &remote_path, app.debug)?;
     }
+    Command::Clippy => {
+      clippy_remote(&cfg, &remote_path, app.debug)?;
+    }
     Command::Run => {
       server::run_server(
         &cfg,
@@ -218,6 +221,23 @@ fn check_remote(
   ssh::ssh_run(&config.target, &cmd)?;
 
   println!("Check complete!");
+  Ok(())
+}
+
+fn clippy_remote(
+  config: &Config,
+  remote_path: &str,
+  debug: bool,
+) -> Result<(), Box<dyn Error>> {
+  git::sync_repo(&config.target, remote_path)?;
+
+  server::run_hooks(config, remote_path, debug)?;
+
+  println!("Running clippy on remote...");
+  let cmd = sandbox::clippy_cmd(remote_path);
+  ssh::ssh_run(&config.target, &cmd)?;
+
+  println!("Clippy complete!");
   Ok(())
 }
 

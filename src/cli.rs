@@ -50,6 +50,8 @@ pub enum Command {
   Build,
   /// Check code on remote (cargo check)
   Check,
+  /// Run clippy on remote (cargo clippy)
+  Clippy,
   /// Build and run on remote
   Run,
   /// Stop the running process on remote
