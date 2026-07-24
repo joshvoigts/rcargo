@@ -214,7 +214,7 @@ pub fn install_cmd(
 ) -> String {
   let inner = match package {
     Some(pkg) => format!(
-      "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo install -p {} --force",
+      "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo install --path . -p {} --force",
       shell_quote(remote_path),
       shell_quote(pkg)
     ),
