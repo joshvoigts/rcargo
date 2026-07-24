@@ -209,12 +209,20 @@ pub fn install_cmd(
   config: &Config,
   remote_path: &str,
   home: &str,
+  package: Option<&str>,
   debug: bool,
 ) -> String {
-  let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo install --path . --force",
-    shell_quote(remote_path)
-  );
+  let inner = match package {
+    Some(pkg) => format!(
+      "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo install -p {} --force",
+      shell_quote(remote_path),
+      shell_quote(pkg)
+    ),
+    None => format!(
+      "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo install --path . --force",
+      shell_quote(remote_path)
+    ),
+  };
 
   if !config.sandbox.enabled {
     return inner;

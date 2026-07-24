@@ -27,6 +27,14 @@ pub struct App {
   #[arg(long, short)]
   pub branch: Option<String>,
 
+  /// Workspace member to install (overrides deploy.toml)
+  #[arg(long, short)]
+  pub package: Option<String>,
+
+  /// Binary name override (defaults to auto-detect from [[bin]] target)
+  #[arg(long)]
+  pub bin: Option<String>,
+
   /// Enable debug output
   #[arg(long)]
   pub debug: bool,

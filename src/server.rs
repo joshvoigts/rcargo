@@ -46,10 +46,10 @@ pub fn run_hooks(
 pub fn stop_server(
   host: &str,
   remote_path: &str,
-  package_name: &str,
+  bin_name: &str,
 ) -> Result<(), Box<dyn Error>> {
   // Try systemd service first
-  let svc = format!("{package_name}.service");
+  let svc = format!("{bin_name}.service");
   let systemd_result = ssh::ssh_capture(
     host,
     &format!("systemctl --user is-active {svc} 2>/dev/null"),
@@ -93,9 +93,9 @@ pub fn stop_server(
 pub fn status_server(
   host: &str,
   remote_path: &str,
-  package_name: &str,
+  bin_name: &str,
 ) -> Result<(), Box<dyn Error>> {
-  let svc = format!("{package_name}.service");
+  let svc = format!("{bin_name}.service");
 
   // Check if systemd service exists
   let state = ssh::ssh_capture(
@@ -127,11 +127,9 @@ pub fn status_server(
     );
 
     if matches!(&running, Ok(s) if s == "running") {
-      println!("Process {package_name} is running (PID {pid})");
+      println!("Process {bin_name} is running (PID {pid})");
     } else {
-      println!(
-        "Process {package_name} has stale PID file (PID {pid})"
-      );
+      println!("Process {bin_name} has stale PID file (PID {pid})");
     }
   } else {
     println!("No running process found");
@@ -145,12 +143,12 @@ pub fn run_server(
   remote_path: &str,
   home: &str,
   _branch: &str,
-  package_name: &str,
+  bin_name: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
   let host = &config.target;
 
-  stop_server(host, remote_path, package_name)?;
+  stop_server(host, remote_path, bin_name)?;
 
   git::sync_repo(host, remote_path)?;
 
@@ -161,7 +159,7 @@ pub fn run_server(
   ssh::ssh_run(host, &cmd)?;
 
   let bin_path = ssh::shell_quote(&format!(
-    "{remote_path}/target/release/{package_name}"
+    "{remote_path}/target/release/{bin_name}"
   ));
   let pid_file =
     ssh::shell_quote(&format!("{remote_path}/rcargo.pid"));

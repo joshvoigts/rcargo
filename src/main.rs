@@ -19,6 +19,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     Err(_) => Config {
       target: String::new(),
       remote_path: None,
+      package: None,
+      bin: None,
       sandbox: Default::default(),
       hooks: Default::default(),
     },
@@ -56,7 +58,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
   }
 
-  let package_name = detect_package_name()?;
+  let (package_name, bin_targets) =
+    detect_package_info(cfg.package.as_deref())?;
+  let bin_name = resolve_bin_name(
+    &package_name,
+    &bin_targets,
+    cfg.bin.as_deref(),
+    app.bin.as_deref(),
+  )?;
   let mut remote_path = cfg.remote_path(&package_name);
 
   // Always resolve remote $HOME — needed for rsync,
@@ -84,31 +93,28 @@ fn main() -> Result<(), Box<dyn Error>> {
         &remote_path,
         &home,
         &branch,
-        &package_name,
+        &bin_name,
         app.debug,
       )?;
     }
     Command::Stop => {
-      server::stop_server(&cfg.target, &remote_path, &package_name)?;
+      server::stop_server(&cfg.target, &remote_path, &bin_name)?;
     }
     Command::Deploy => {
       deploy::deploy(
         &cfg,
         &remote_path,
         &home,
-        &package_name,
+        cfg.package.as_deref(),
+        &bin_name,
         app.debug,
       )?;
     }
     Command::Undeploy => {
-      deploy::undeploy(&cfg, &remote_path, &home, &package_name)?;
+      deploy::undeploy(&cfg, &remote_path, &home, &bin_name)?;
     }
     Command::Status => {
-      server::status_server(
-        &cfg.target,
-        &remote_path,
-        &package_name,
-      )?;
+      server::status_server(&cfg.target, &remote_path, &bin_name)?;
     }
     Command::Test { args } => {
       test_remote(
@@ -129,6 +135,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[derive(serde::Deserialize)]
 struct CargoToml {
   package: Package,
+  #[serde(default)]
+  bin: Vec<BinTarget>,
 }
 
 #[derive(serde::Deserialize)]
@@ -136,10 +144,64 @@ struct Package {
   name: String,
 }
 
-fn detect_package_name() -> Result<String, Box<dyn Error>> {
-  let content = std::fs::read_to_string("Cargo.toml")?;
+#[derive(serde::Deserialize)]
+struct BinTarget {
+  name: String,
+}
+
+/// Find and parse the relevant Cargo.toml, returning the package
+/// name and any explicit [[bin]] target names.
+fn detect_package_info(
+  package: Option<&str>,
+) -> Result<(String, Vec<String>), Box<dyn Error>> {
+  let cargo_toml_path = match package {
+    Some(pkg) => {
+      let member_path = format!("{pkg}/Cargo.toml");
+      if std::path::Path::new(&member_path).exists() {
+        member_path
+      } else {
+        return Err(
+          format!(
+            "Package '{pkg}' not found: {member_path} does not exist"
+          )
+          .into(),
+        );
+      }
+    }
+    None => "Cargo.toml".to_string(),
+  };
+
+  let content = std::fs::read_to_string(&cargo_toml_path)?;
   let cargo: CargoToml = toml::from_str(&content)?;
-  Ok(cargo.package.name)
+  let bin_names: Vec<String> =
+    cargo.bin.into_iter().map(|b| b.name).collect();
+  Ok((cargo.package.name, bin_names))
+}
+
+/// Resolve the binary name from config/CLI/Cargo.toml.
+fn resolve_bin_name(
+  package_name: &str,
+  bin_targets: &[String],
+  config_bin: Option<&str>,
+  cli_bin: Option<&str>,
+) -> Result<String, Box<dyn Error>> {
+  if let Some(bin) = cli_bin {
+    return Ok(bin.to_string());
+  }
+  if let Some(bin) = config_bin {
+    return Ok(bin.to_string());
+  }
+  match bin_targets.len() {
+    0 => Ok(package_name.to_string()),
+    1 => Ok(bin_targets[0].clone()),
+    _ => Err(
+      format!(
+        "Multiple [[bin]] targets found: {bin_targets:?}. \
+       Specify which one with --bin"
+      )
+      .into(),
+    ),
+  }
 }
 
 fn check_remote(
