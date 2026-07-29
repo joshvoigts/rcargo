@@ -166,12 +166,17 @@ fn validate_path(
   workdir: &Path,
   path: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+  if path.contains("..") {
+    return Err(
+      format!("path {path} contains .. which is not allowed").into(),
+    );
+  }
+
   let full = workdir.join(path);
   let canonical_workdir = workdir
     .canonicalize()
     .map_err(|e| format!("cannot resolve workdir: {e}"))?;
 
-  // Use symlink_metadata to detect symlinks without following them.
   if let Ok(metadata) = full.symlink_metadata() {
     if metadata.file_type().is_symlink() {
       return Err(format!("symlink {path} is not allowed").into());

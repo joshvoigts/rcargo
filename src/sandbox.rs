@@ -17,12 +17,7 @@ pub fn clippy_cmd(remote_path: &str) -> String {
   )
 }
 
-pub fn inner_cmd(
-  config: &Config,
-  remote_path: &str,
-  _home: &str,
-  _debug: bool,
-) -> String {
+pub fn inner_cmd(config: &Config, remote_path: &str) -> String {
   let inner = format!(
     "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo build --release",
     shell_quote(remote_path)
@@ -33,9 +28,7 @@ pub fn inner_cmd(
 pub fn inner_test_cmd(
   config: &Config,
   remote_path: &str,
-  _home: &str,
   extra_args: &[String],
-  _debug: bool,
 ) -> String {
   let args_str = if extra_args.is_empty() {
     String::new()

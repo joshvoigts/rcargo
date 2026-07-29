@@ -82,6 +82,9 @@ fn default_true() -> bool {
 #[derive(Debug, Deserialize, Default)]
 pub struct SandboxAllow {
   #[serde(default)]
+  pub read: Vec<String>,
+
+  #[serde(default)]
   pub write: Vec<String>,
 
   #[serde(default)]

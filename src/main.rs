@@ -247,12 +247,10 @@ fn build_remote(
   home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path, home)?;
-
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::inner_cmd(config, remote_path, home, debug);
+  let cmd = sandbox::inner_cmd(config, remote_path);
   match shim::run(config, remote_path, home, &cmd, debug) {
     Ok(0) => {}
     Ok(code) => {
@@ -277,18 +275,10 @@ fn test_remote(
   debug: bool,
   timeout: std::time::Duration,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path, home)?;
-
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Running tests on remote...");
-  let cmd = sandbox::inner_test_cmd(
-    config,
-    remote_path,
-    home,
-    extra_args,
-    debug,
-  );
+  let cmd = sandbox::inner_test_cmd(config, remote_path, extra_args);
   match shim::run_with_timeout(
     config,
     remote_path,

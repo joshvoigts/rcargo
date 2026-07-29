@@ -25,13 +25,7 @@ impl ShimSession {
     shim_path: &str,
   ) -> Result<Self, Box<dyn std::error::Error>> {
     let mut child = Command::new("ssh")
-      .args([
-        "-t",
-        "-o",
-        "BatchMode=yes",
-        host,
-        &format!("{shim_path} --shim"),
-      ])
+      .args(["-t", "-o", "BatchMode=yes", host, shim_path])
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped())
@@ -648,8 +642,11 @@ fn build_sandbox_message(
     write.push(w.clone());
   }
 
-  let read =
+  let mut read =
     vec!["/usr/libexec".to_string(), "/usr/include".to_string()];
+  for r in &config.sandbox.allow.read {
+    read.push(r.clone());
+  }
 
   let default_domains = [
     "crates.io",

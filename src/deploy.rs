@@ -55,12 +55,10 @@ pub fn deploy(
   // Stop any existing process (PID file or systemd service)
   let _ = server::stop_server(host, remote_path, bin_name);
 
-  crate::shim::sync(config, remote_path, home)?;
-
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
-  let cmd = sandbox::inner_cmd(config, remote_path, home, debug);
+  let cmd = sandbox::inner_cmd(config, remote_path);
   match crate::shim::run(config, remote_path, home, &cmd, debug) {
     Ok(0) => {}
     Ok(code) => {
@@ -79,10 +77,11 @@ pub fn deploy(
   let service_dir = format!("{home}/.config/systemd/user");
   let service_path = format!("{service_dir}/{svc}");
 
+  let delimiter = "RCARGO_EOF_4f8a2b";
   ssh::ssh_capture(
     host,
     &format!(
-      "mkdir -p {dir} && cat > {path} << 'RCARGO_EOF'\n{content}RCARGO_EOF",
+      "mkdir -p {dir} && cat > {path} << '{delimiter}'\n{content}{delimiter}",
       dir = ssh::shell_quote(&service_dir),
       path = ssh::shell_quote(&service_path),
       content = service_content,
