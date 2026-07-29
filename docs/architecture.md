@@ -56,14 +56,18 @@ Seatbelt (macOS) restrictions before executing cargo.
 
 These do **not** run inside the sandbox. `cargo check` and
 `cargo clippy` are read-only analysis passes that don't execute
-target code, so sandboxing is unnecessary. These commands also skip
-delta sync — they use direct SSH execution for simplicity.
+target code, so sandboxing is unnecessary. They use delta sync
+to transfer files, then execute via direct SSH.
 
 ## Hooks
 
 Prebuild hooks run on the remote host **outside the sandbox**,
 via a separate SSH session. They inherit environment variables
 from `[sandbox.env]` in the configuration.
+
+Hook ordering: for all commands, files are synced first, then
+hooks run, then the cargo command executes (sandboxed for
+build/test, unsandboxed for check/clippy).
 
 ## Deploy
 

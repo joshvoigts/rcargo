@@ -18,7 +18,8 @@ fn generate_service_file(
 
   let mut env_lines = String::new();
   for (k, v) in &config.sandbox.env {
-    env_lines.push_str(&format!("Environment=\"{k}={v}\"\n"));
+    let escaped = v.replace('\\', "\\\\").replace('"', "\\\"");
+    env_lines.push_str(&format!("Environment=\"{k}={escaped}\"\n"));
   }
 
   format!(
@@ -55,11 +56,14 @@ pub fn deploy(
   // Stop any existing process (PID file or systemd service)
   let _ = server::stop_server(host, remote_path, bin_name);
 
+  crate::shim::sync(config, remote_path, home)?;
+
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd = sandbox::inner_cmd(config, remote_path);
-  match crate::shim::run(config, remote_path, home, &cmd, debug) {
+  match crate::shim::run_only(config, remote_path, home, &cmd, debug)
+  {
     Ok(0) => {}
     Ok(code) => {
       return Err(

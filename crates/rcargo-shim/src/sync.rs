@@ -155,3 +155,156 @@ pub fn write_file(path: &Path, data: &[u8]) -> Result<(), String> {
   fs::write(path, data)
     .map_err(|e| format!("write {}: {e}", path.display()))
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use tempfile::TempDir;
+
+  #[test]
+  fn list_local_files_finds_files() {
+    let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("a.rs"), "fn main() {}").unwrap();
+    fs::create_dir(tmp.path().join("src")).unwrap();
+    fs::write(tmp.path().join("src/lib.rs"), "").unwrap();
+
+    let files = list_local_files(tmp.path()).unwrap();
+    let paths: Vec<&str> =
+      files.iter().map(|f| f.path.as_str()).collect();
+    assert!(paths.contains(&"a.rs"));
+    assert!(paths.contains(&"src/lib.rs"));
+  }
+
+  #[test]
+  fn list_local_files_excludes_git() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join(".git/objects")).unwrap();
+    fs::write(tmp.path().join(".git/HEAD"), "").unwrap();
+    fs::write(tmp.path().join("a.rs"), "").unwrap();
+
+    let files = list_local_files(tmp.path()).unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].path, "a.rs");
+  }
+
+  #[test]
+  fn list_local_files_excludes_target() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("target/release")).unwrap();
+    fs::write(tmp.path().join("target/release/binary"), "").unwrap();
+    fs::write(tmp.path().join("a.rs"), "").unwrap();
+
+    let files = list_local_files(tmp.path()).unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].path, "a.rs");
+  }
+
+  #[test]
+  fn apply_upload_creates_file() {
+    let tmp = TempDir::new().unwrap();
+    let file_path = tmp.path().join("hello.txt");
+    let data = b"hello world";
+    let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+
+    apply_upload(&file_path, &b64).unwrap();
+    let contents = fs::read(&file_path).unwrap();
+    assert_eq!(contents, data);
+  }
+
+  #[test]
+  fn apply_upload_creates_parent_dirs() {
+    let tmp = TempDir::new().unwrap();
+    let file_path = tmp.path().join("a/b/c/file.txt");
+    let data = b"nested";
+    let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+
+    apply_upload(&file_path, &b64).unwrap();
+    let contents = fs::read(&file_path).unwrap();
+    assert_eq!(contents, data);
+  }
+
+  #[test]
+  fn apply_delete_removes_file() {
+    let tmp = TempDir::new().unwrap();
+    let file_path = tmp.path().join("to_delete.txt");
+    fs::write(&file_path, "bye").unwrap();
+    assert!(file_path.exists());
+
+    apply_delete(&file_path).unwrap();
+    assert!(!file_path.exists());
+  }
+
+  #[test]
+  fn apply_delete_removes_dir() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("to_delete_dir");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("file.txt"), "").unwrap();
+
+    apply_delete(&dir).unwrap();
+    assert!(!dir.exists());
+  }
+
+  #[test]
+  fn apply_delete_noop_on_missing() {
+    let tmp = TempDir::new().unwrap();
+    let file_path = tmp.path().join("nope.txt");
+    apply_delete(&file_path).unwrap();
+  }
+
+  #[test]
+  fn signature_and_delta_roundtrip() {
+    let old_data = b"hello world, this is the old content";
+    let new_data = b"hello world, this is the new content!!!";
+
+    let sig = compute_signature(old_data);
+    assert!(!sig.is_empty());
+
+    let mut delta = Vec::new();
+    let sig_obj =
+      fast_rsync::Signature::deserialize(sig.clone()).unwrap();
+    fast_rsync::diff(&sig_obj.index(), new_data, &mut delta).unwrap();
+
+    let result = apply_delta(
+      old_data,
+      &base64::engine::general_purpose::STANDARD.encode(&delta),
+      &sha256_hex(new_data),
+    )
+    .unwrap();
+    assert_eq!(result, new_data);
+  }
+
+  #[test]
+  fn delta_rejects_wrong_sha256() {
+    let old_data = b"old";
+    let new_data = b"new";
+
+    let sig = compute_signature(old_data);
+    let mut delta = Vec::new();
+    let sig_obj = fast_rsync::Signature::deserialize(sig).unwrap();
+    fast_rsync::diff(&sig_obj.index(), new_data, &mut delta).unwrap();
+
+    let wrong_hash = "0".repeat(64);
+    let result = apply_delta(
+      old_data,
+      &base64::engine::general_purpose::STANDARD.encode(&delta),
+      &wrong_hash,
+    );
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("SHA-256 mismatch"));
+  }
+
+  #[test]
+  fn write_file_creates_dirs() {
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("a/b/c/file.bin");
+    write_file(&path, b"data").unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"data");
+  }
+
+  fn sha256_hex(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
+  }
+}

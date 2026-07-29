@@ -166,10 +166,13 @@ fn validate_path(
   workdir: &Path,
   path: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-  if path.contains("..") {
-    return Err(
-      format!("path {path} contains .. which is not allowed").into(),
-    );
+  for component in path.split('/') {
+    if component == ".." {
+      return Err(
+        format!("path component '..' is not allowed in {path}")
+          .into(),
+      );
+    }
   }
 
   let full = workdir.join(path);
@@ -198,4 +201,81 @@ fn validate_path(
     }
   }
   Ok(full)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use tempfile::TempDir;
+
+  fn setup_workdir() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    // Create a sample file so validate_path has something
+    // to check against.
+    std::fs::write(tmp.path().join("hello.txt"), "hi").unwrap();
+    tmp
+  }
+
+  #[test]
+  fn validate_simple_path() {
+    let tmp = setup_workdir();
+    let result = validate_path(tmp.path(), "hello.txt").unwrap();
+    assert_eq!(result, tmp.path().join("hello.txt"));
+  }
+
+  #[test]
+  fn validate_nested_path() {
+    let tmp = setup_workdir();
+    std::fs::create_dir_all(tmp.path().join("a/b")).unwrap();
+    let result = validate_path(tmp.path(), "a/b/hello.txt").unwrap();
+    assert_eq!(result, tmp.path().join("a/b/hello.txt"));
+  }
+
+  #[test]
+  fn validate_rejects_dotdot() {
+    let tmp = setup_workdir();
+    assert!(validate_path(tmp.path(), "../etc/passwd").is_err());
+  }
+
+  #[test]
+  fn validate_rejects_dotdot_in_middle() {
+    let tmp = setup_workdir();
+    assert!(
+      validate_path(tmp.path(), "foo/../../etc/passwd").is_err()
+    );
+  }
+
+  #[test]
+  fn validate_rejects_dotdot_embedded() {
+    let tmp = setup_workdir();
+    assert!(validate_path(tmp.path(), "foo/..").is_err());
+  }
+
+  #[test]
+  fn validate_rejects_symlink() {
+    let tmp = setup_workdir();
+    std::os::unix::fs::symlink(
+      "/etc/passwd",
+      tmp.path().join("link"),
+    )
+    .unwrap();
+    assert!(validate_path(tmp.path(), "link").is_err());
+  }
+
+  #[test]
+  fn validate_rejects_symlink_to_parent() {
+    let tmp = setup_workdir();
+    std::os::unix::fs::symlink("..", tmp.path().join("sneaky"))
+      .unwrap();
+    assert!(validate_path(tmp.path(), "sneaky").is_err());
+  }
+
+  #[test]
+  fn validate_file_not_exists_no_parent() {
+    let tmp = setup_workdir();
+    // nonexistent file whose parent also doesn't exist
+    let result =
+      validate_path(tmp.path(), "nonexistent/deep/file.txt");
+    assert!(result.is_ok());
+  }
 }

@@ -324,7 +324,7 @@ fn shim_sync(
   Ok(())
 }
 
-pub fn run(
+pub fn run_only(
   config: &Config,
   remote_path: &str,
   home: &str,
@@ -345,16 +345,12 @@ pub fn run(
     eprintln!("[shim] handshake: {handshake:?}");
   }
 
-  // Send Sandbox first to set the workdir (required
-  // before List can work).
   let sandbox = build_sandbox_message(config, remote_path, home);
   session.send(&sandbox)?;
   let ok = session.receive()?;
   if !matches!(ok, Message::Ok) {
     return Err(format!("sandbox config rejected: {ok:?}").into());
   }
-
-  sync_files_via_session(&mut session)?;
 
   session.send(&Message::Run {
     command: cmd.to_string(),
@@ -364,7 +360,7 @@ pub fn run(
   Ok(code)
 }
 
-pub fn run_with_timeout(
+pub fn run_only_with_timeout(
   config: &Config,
   remote_path: &str,
   home: &str,
@@ -392,8 +388,6 @@ pub fn run_with_timeout(
   if !matches!(ok, Message::Ok) {
     return Err(format!("sandbox config rejected: {ok:?}").into());
   }
-
-  sync_files_via_session(&mut session)?;
 
   session.send(&Message::Run {
     command: cmd.to_string(),

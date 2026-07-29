@@ -13,44 +13,51 @@ pub struct SandboxConfig {
 
 impl SandboxConfig {
   pub fn encode(&self) -> String {
-    let mut parts = vec![
+    let mut lines = vec![
       if self.enabled { "1" } else { "0" }.to_string(),
       self.workdir.clone(),
     ];
     for p in &self.write {
-      parts.push(format!("write:{p}"));
+      lines.push(format!("write:{p}"));
     }
     for p in &self.read {
-      parts.push(format!("read:{p}"));
+      lines.push(format!("read:{p}"));
     }
     if !self.net.is_empty() {
-      parts.push("--".to_string());
+      lines.push("--".to_string());
       for d in &self.net {
-        parts.push(d.clone());
+        lines.push(d.clone());
       }
     }
-    parts.join(" ")
+    lines.join("\n")
   }
 
   pub fn decode(s: &str) -> Result<Self, String> {
-    let parts: Vec<&str> = s.split(" -- ").collect();
-    let before_net = parts[0];
-    let net: Vec<String> = if parts.len() > 1 {
-      parts[1].split_whitespace().map(String::from).collect()
-    } else {
-      Vec::new()
+    let lines: Vec<&str> = s.split('\n').collect();
+    let separator = lines.iter().position(|l| *l == "--");
+    let before_net = match separator {
+      Some(pos) => &lines[..pos],
+      None => &lines,
     };
-    let mut tokens = before_net.split_whitespace();
+    let net: Vec<String> = match separator {
+      Some(pos) => lines[pos + 1..]
+        .iter()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect(),
+      None => Vec::new(),
+    };
+    let mut iter = before_net.iter();
     let enabled =
-      tokens.next().ok_or("missing SANDBOX enabled")? == "1";
+      iter.next().ok_or("missing SANDBOX enabled")?.trim() == "1";
     let workdir =
-      tokens.next().ok_or("missing SANDBOX workdir")?.to_string();
+      iter.next().ok_or("missing SANDBOX workdir")?.to_string();
     let mut write = Vec::new();
     let mut read = Vec::new();
-    for tok in tokens {
-      if let Some(p) = tok.strip_prefix("write:") {
+    for line in iter {
+      if let Some(p) = line.strip_prefix("write:") {
         write.push(p.to_string());
-      } else if let Some(p) = tok.strip_prefix("read:") {
+      } else if let Some(p) = line.strip_prefix("read:") {
         read.push(p.to_string());
       }
     }
@@ -517,6 +524,50 @@ mod tests {
       write: vec![],
       read: vec![],
       net: vec![],
+    });
+  }
+
+  #[test]
+  fn sandbox_config_spaces_in_workdir() {
+    let config = SandboxConfig {
+      enabled: true,
+      workdir: "/home/user/my project".into(),
+      write: vec!["/home/user/.cargo".into()],
+      read: vec![],
+      net: vec!["crates.io".into()],
+    };
+    let encoded = config.encode();
+    let decoded =
+      SandboxConfig::decode(&encoded).expect("decode failed");
+    assert_eq!(config.encode(), decoded.encode());
+  }
+
+  #[test]
+  fn sandbox_config_spaces_in_paths() {
+    let config = SandboxConfig {
+      enabled: true,
+      workdir: "/tmp".into(),
+      write: vec![
+        "/home/user/my project/src".into(),
+        "/home/user/.cargo".into(),
+      ],
+      read: vec!["/usr/my includes".into()],
+      net: vec![],
+    };
+    let encoded = config.encode();
+    let decoded =
+      SandboxConfig::decode(&encoded).expect("decode failed");
+    assert_eq!(config.encode(), decoded.encode());
+  }
+
+  #[test]
+  fn sandbox_message_spaces_roundtrip() {
+    roundtrip(&Message::Sandbox {
+      enabled: true,
+      workdir: "/home/user/my project".into(),
+      write: vec!["/home/user/my project/src".into()],
+      read: vec!["/usr/my includes".into()],
+      net: vec!["crates.io".into()],
     });
   }
 

@@ -44,10 +44,9 @@ aarch64-apple-darwin
 
 ### Client Binary
 
-- **Client mode** (default): current behavior, talks to remote via SSH
-- **Shim mode** (`rcargo --shim`): reads sync protocol from stdin,
-  writes to stdout, runs sandboxed commands. This mode is only used
-  when the client is testing the shim locally.
+The `rcargo` client communicates with the remote shim over SSH.
+The shim (`rcargo-shim`) is a separate binary that reads the sync
+protocol from stdin, writes to stdout, and runs sandboxed commands.
 
 Build process (CI or `just build-all`):
 
