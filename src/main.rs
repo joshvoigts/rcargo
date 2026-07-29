@@ -1,7 +1,6 @@
 mod cli;
 mod config;
 mod deploy;
-mod git;
 mod sandbox;
 mod server;
 mod shim;
@@ -83,11 +82,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     remote_path = remote_path.replace("$HOME", &home);
   }
 
-  let branch = match &app.branch {
-    Some(b) => b.clone(),
-    None => git::current_branch()?,
-  };
-
   match app.cmd {
     Some(Command::Build) => {
       build_remote(&cfg, &remote_path, &home, app.debug)?;
@@ -103,7 +97,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         &cfg,
         &remote_path,
         &home,
-        &branch,
         &bin_name,
         app.debug,
       )?;
@@ -132,7 +125,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         &cfg,
         &remote_path,
         &home,
-        &branch,
         &args,
         app.debug,
         std::time::Duration::from_secs(app.timeout),
@@ -285,7 +277,6 @@ fn test_remote(
   config: &Config,
   remote_path: &str,
   home: &str,
-  _branch: &str,
   extra_args: &[String],
   debug: bool,
   timeout: std::time::Duration,

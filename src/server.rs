@@ -145,7 +145,6 @@ pub fn run_server(
   config: &Config,
   remote_path: &str,
   home: &str,
-  _branch: &str,
   bin_name: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {

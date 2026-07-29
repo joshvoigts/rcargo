@@ -23,10 +23,6 @@ pub struct App {
   #[arg(long, short)]
   pub target: Option<String>,
 
-  /// Override the branch (defaults to current branch)
-  #[arg(long, short)]
-  pub branch: Option<String>,
-
   /// Workspace member to install (overrides deploy.toml)
   #[arg(long, short)]
   pub package: Option<String>,
