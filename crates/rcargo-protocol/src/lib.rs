@@ -2,6 +2,68 @@ use std::io::{self, BufReader, BufWriter, Read, Write};
 
 pub const VERSION: &str = env!("CARGO_GIT_VERSION");
 
+#[derive(Debug, Clone, Default)]
+pub struct SandboxConfig {
+  pub enabled: bool,
+  pub workdir: String,
+  pub write: Vec<String>,
+  pub read: Vec<String>,
+  pub net: Vec<String>,
+}
+
+impl SandboxConfig {
+  pub fn encode(&self) -> String {
+    let mut parts = vec![
+      if self.enabled { "1" } else { "0" }.to_string(),
+      self.workdir.clone(),
+    ];
+    for p in &self.write {
+      parts.push(format!("write:{p}"));
+    }
+    for p in &self.read {
+      parts.push(format!("read:{p}"));
+    }
+    if !self.net.is_empty() {
+      parts.push("--".to_string());
+      for d in &self.net {
+        parts.push(d.clone());
+      }
+    }
+    parts.join(" ")
+  }
+
+  pub fn decode(s: &str) -> Result<Self, String> {
+    let parts: Vec<&str> = s.split(" -- ").collect();
+    let before_net = parts[0];
+    let net: Vec<String> = if parts.len() > 1 {
+      parts[1].split_whitespace().map(String::from).collect()
+    } else {
+      Vec::new()
+    };
+    let mut tokens = before_net.split_whitespace();
+    let enabled =
+      tokens.next().ok_or("missing SANDBOX enabled")? == "1";
+    let workdir =
+      tokens.next().ok_or("missing SANDBOX workdir")?.to_string();
+    let mut write = Vec::new();
+    let mut read = Vec::new();
+    for tok in tokens {
+      if let Some(p) = tok.strip_prefix("write:") {
+        write.push(p.to_string());
+      } else if let Some(p) = tok.strip_prefix("read:") {
+        read.push(p.to_string());
+      }
+    }
+    Ok(SandboxConfig {
+      enabled,
+      workdir,
+      write,
+      read,
+      net,
+    })
+  }
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
   Handshake {
@@ -94,24 +156,14 @@ impl Message {
         read,
         net,
       } => {
-        let mut parts = vec![
-          "SANDBOX".to_string(),
-          if *enabled { "1" } else { "0" }.to_string(),
-          workdir.clone(),
-        ];
-        for p in write {
-          parts.push(format!("write:{p}"));
-        }
-        for p in read {
-          parts.push(format!("read:{p}"));
-        }
-        if !net.is_empty() {
-          parts.push("--".to_string());
-          for d in net {
-            parts.push(d.clone());
-          }
-        }
-        parts.join(" ")
+        let config = SandboxConfig {
+          enabled: *enabled,
+          workdir: workdir.clone(),
+          write: write.clone(),
+          read: read.clone(),
+          net: net.clone(),
+        };
+        format!("SANDBOX {}", config.encode())
       }
       Message::Run { command } => {
         format!("RUN {command}")
@@ -203,33 +255,13 @@ impl Message {
       }
       "END_SYNC" => Ok(Message::EndSync),
       "SANDBOX" => {
-        let parts: Vec<&str> = rest.split(" -- ").collect();
-        let before_net = parts[0];
-        let net: Vec<String> = if parts.len() > 1 {
-          parts[1].split_whitespace().map(String::from).collect()
-        } else {
-          Vec::new()
-        };
-        let mut tokens = before_net.split_whitespace();
-        let enabled =
-          tokens.next().ok_or("missing SANDBOX enabled")? == "1";
-        let workdir =
-          tokens.next().ok_or("missing SANDBOX workdir")?.to_string();
-        let mut write = Vec::new();
-        let mut read = Vec::new();
-        for tok in tokens {
-          if let Some(p) = tok.strip_prefix("write:") {
-            write.push(p.to_string());
-          } else if let Some(p) = tok.strip_prefix("read:") {
-            read.push(p.to_string());
-          }
-        }
+        let config = SandboxConfig::decode(rest)?;
         Ok(Message::Sandbox {
-          enabled,
-          workdir,
-          write,
-          read,
-          net,
+          enabled: config.enabled,
+          workdir: config.workdir,
+          write: config.write,
+          read: config.read,
+          net: config.net,
         })
       }
       "RUN" => Ok(Message::Run {
@@ -429,6 +461,39 @@ mod tests {
       read: vec!["/usr/include".into()],
       net: vec!["crates.io".into(), "github.com".into()],
     });
+  }
+
+  #[test]
+  fn sandbox_config_roundtrip() {
+    let config = SandboxConfig {
+      enabled: true,
+      workdir: "/home/user/proj".into(),
+      write: vec![
+        "/home/user/.cargo".into(),
+        "/home/user/proj".into(),
+      ],
+      read: vec!["/usr/include".into()],
+      net: vec!["crates.io".into(), "github.com".into()],
+    };
+    let encoded = config.encode();
+    let decoded =
+      SandboxConfig::decode(&encoded).expect("decode failed");
+    assert_eq!(config.encode(), decoded.encode());
+  }
+
+  #[test]
+  fn sandbox_config_no_net_roundtrip() {
+    let config = SandboxConfig {
+      enabled: false,
+      workdir: "/tmp".into(),
+      write: vec![],
+      read: vec![],
+      net: vec![],
+    };
+    let encoded = config.encode();
+    let decoded =
+      SandboxConfig::decode(&encoded).expect("decode failed");
+    assert_eq!(config.encode(), decoded.encode());
   }
 
   #[test]

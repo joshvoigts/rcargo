@@ -38,10 +38,6 @@ pub struct App {
   /// Timeout in seconds for remote commands (default: 600)
   #[arg(long, default_value_t = 600)]
   pub timeout: u64,
-
-  /// Run in shim mode (for local testing)
-  #[arg(long)]
-  pub shim: bool,
 }
 
 #[derive(Subcommand)]

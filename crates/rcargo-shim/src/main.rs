@@ -2,8 +2,9 @@ mod sandbox;
 mod sync;
 
 use base64::Engine;
-use rcargo_protocol::{Message, ProtocolReader, ProtocolWriter};
-use sandbox::SandboxConfig;
+use rcargo_protocol::{
+  Message, ProtocolReader, ProtocolWriter, SandboxConfig,
+};
 use std::io::{self};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -178,7 +179,12 @@ fn validate_path(
   let canonical_workdir = workdir
     .canonicalize()
     .map_err(|e| format!("cannot resolve workdir: {e}"))?;
-  if full.exists() {
+
+  // Use symlink_metadata to detect symlinks without following them.
+  if let Ok(metadata) = full.symlink_metadata() {
+    if metadata.file_type().is_symlink() {
+      return Err(format!("symlink {path} is not allowed").into());
+    }
     let canonical = full.canonicalize().map_err(|e| {
       format!("cannot resolve {}: {e}", full.display())
     })?;

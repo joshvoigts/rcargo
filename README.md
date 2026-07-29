@@ -4,8 +4,7 @@ Run cargo on a remote host and stream output back locally.
 
 ## Requirements
 
-- `rsync`
-- `nono` — [github.com/nolabs-ai/nono](https://github.com/nolabs-ai/nono) (only when sandbox is enabled)
+- `ssh` and `scp`
 - On Linux: a kernel supporting Landlock LSM (5.13+) (only when sandbox is enabled)
 
 ## Setup
@@ -76,11 +75,19 @@ prebuild = [
 
 Hooks inherit the environment variables from `[sandbox.env]`.
 
+## Architecture
+
+See `docs/architecture.md` for an overview of the system design,
+command flow, and key decisions (e.g. why check/clippy skip
+sandboxing).
+
 ## Usage
 
 Before any command runs, rcargo verifies SSH connectivity to the remote host.
 
-Code is synced to the remote via `rsync`, which excludes `.git` and respects `.gitignore` so build artifacts and databases are untouched.
+Code is synced to the remote via the shim's delta sync protocol,
+which excludes `.git` and respects `.gitignore` so build artifacts
+and databases are untouched.
 
 ```
 rcargo build          # Build on remote (sandboxed)

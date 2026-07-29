@@ -1,26 +1,4 @@
-// Fields are used on different platforms: Linux uses read/write,
-// macOS additionally uses net; workdir is set but not read by apply_sandbox.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct SandboxConfig {
-  pub enabled: bool,
-  pub workdir: String,
-  pub write: Vec<String>,
-  pub read: Vec<String>,
-  pub net: Vec<String>,
-}
-
-impl Default for SandboxConfig {
-  fn default() -> Self {
-    Self {
-      enabled: false,
-      workdir: String::new(),
-      write: Vec::new(),
-      read: Vec::new(),
-      net: Vec::new(),
-    }
-  }
-}
+use rcargo_protocol::SandboxConfig;
 
 #[cfg(target_os = "linux")]
 pub fn apply_sandbox(

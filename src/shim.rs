@@ -186,6 +186,7 @@ impl ShimSession {
 
 pub fn ensure_shim(
   host: &str,
+  home: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
   if !shim_embed::has_embedded_shim() {
     return Err(
@@ -194,7 +195,6 @@ pub fn ensure_shim(
     );
   }
 
-  let home = ssh::resolve_home(host)?;
   let shim_dir = format!("{home}/{SHIM_DIR}");
   let shim_path = format!("{shim_dir}/{SHIM_NAME}");
 
@@ -278,8 +278,9 @@ pub fn ensure_shim(
 pub fn sync(
   config: &Config,
   remote_path: &str,
+  home: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  let shim_path = ensure_shim(&config.target)?;
+  let shim_path = ensure_shim(&config.target, home)?;
   shim_sync(&config.target, &shim_path, remote_path)
 }
 
@@ -307,7 +308,9 @@ fn shim_sync(
     }
   }
 
-  // Send Sandbox to set the workdir before List.
+  // Sandbox is disabled here because this sync path is used for
+  // read-only commands (check, clippy) that don't execute target
+  // code. The shim only applies sandboxing for build/test/run.
   session.send(&Message::Sandbox {
     enabled: false,
     workdir: remote_path.to_string(),
@@ -332,7 +335,7 @@ pub fn run(
   cmd: &str,
   debug: bool,
 ) -> Result<i32, Box<dyn std::error::Error>> {
-  let shim_path = ensure_shim(&config.target)?;
+  let shim_path = ensure_shim(&config.target, home)?;
 
   ssh::ssh_capture(
     &config.target,
@@ -373,7 +376,7 @@ pub fn run_with_timeout(
   debug: bool,
   timeout: std::time::Duration,
 ) -> Result<i32, Box<dyn std::error::Error>> {
-  let shim_path = ensure_shim(&config.target)?;
+  let shim_path = ensure_shim(&config.target, home)?;
 
   ssh::ssh_capture(
     &config.target,

@@ -15,12 +15,6 @@ use std::error::Error;
 fn main() -> Result<(), Box<dyn Error>> {
   let app = App::parse();
 
-  if app.shim {
-    // Shim mode: read protocol from stdin, run sandboxed commands
-    protocol_shim_main();
-    return Ok(());
-  }
-
   let mut cfg = match Config::load() {
     Ok(c) => c,
     Err(_) => Config {
@@ -87,10 +81,10 @@ fn main() -> Result<(), Box<dyn Error>> {
       build_remote(&cfg, &remote_path, &home, app.debug)?;
     }
     Some(Command::Check) => {
-      check_remote(&cfg, &remote_path, app.debug)?;
+      check_remote(&cfg, &remote_path, &home, app.debug)?;
     }
     Some(Command::Clippy) => {
-      clippy_remote(&cfg, &remote_path, app.debug)?;
+      clippy_remote(&cfg, &remote_path, &home, app.debug)?;
     }
     Some(Command::Run) => {
       server::run_server(
@@ -214,9 +208,10 @@ fn resolve_bin_name(
 fn check_remote(
   config: &Config,
   remote_path: &str,
+  home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path)?;
+  shim::sync(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -231,9 +226,10 @@ fn check_remote(
 fn clippy_remote(
   config: &Config,
   remote_path: &str,
+  home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path)?;
+  shim::sync(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -251,7 +247,7 @@ fn build_remote(
   home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path)?;
+  shim::sync(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -281,7 +277,7 @@ fn test_remote(
   debug: bool,
   timeout: std::time::Duration,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path)?;
+  shim::sync(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -314,53 +310,4 @@ fn test_remote(
 
   println!("Tests complete!");
   Ok(())
-}
-
-fn protocol_shim_main() {
-  use rcargo_protocol::{Message, ProtocolReader, ProtocolWriter};
-  use std::process::Command;
-
-  let stdin = std::io::stdin();
-  let stdout = std::io::stdout();
-  let mut reader = ProtocolReader::new(stdin.lock());
-  let mut writer = ProtocolWriter::new(stdout.lock());
-
-  if let Err(e) = writer.send(&Message::Handshake {
-    version: rcargo_protocol::VERSION.to_string(),
-    os: std::env::consts::OS.to_string(),
-    arch: std::env::consts::ARCH.to_string(),
-  }) {
-    eprintln!("[shim] failed to send handshake: {e}");
-    std::process::exit(1);
-  }
-
-  loop {
-    let msg = match reader.receive() {
-      Ok(m) => m,
-      Err(e) => {
-        eprintln!("[shim] read error: {e}");
-        break;
-      }
-    };
-    match msg {
-      Message::Run { command } => {
-        let status = Command::new("bash")
-          .args(["--norc", "--noprofile", "-c", &command])
-          .status();
-        let code = match status {
-          Ok(s) => s.code().unwrap_or(1),
-          Err(e) => {
-            eprintln!("[shim] exec error: {e}");
-            1
-          }
-        };
-        std::process::exit(code);
-      }
-      _ => {
-        let _ = writer.send(&Message::Error(
-          "unexpected message in --shim mode".into(),
-        ));
-      }
-    }
-  }
 }
