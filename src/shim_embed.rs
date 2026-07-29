@@ -29,5 +29,5 @@ pub fn get_shim_binary(os: &str, arch: &str) -> Option<Vec<u8>> {
 }
 
 pub fn shim_version() -> &'static str {
-  "0.1.0"
+  rcargo_protocol::VERSION
 }

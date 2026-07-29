@@ -1,6 +1,6 @@
 use std::io::{self, BufReader, BufWriter, Read, Write};
 
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = env!("CARGO_GIT_VERSION");
 
 #[derive(Debug, Clone)]
 pub enum Message {
