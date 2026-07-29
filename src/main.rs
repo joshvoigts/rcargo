@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod deploy;
 mod git;
 mod sandbox;
 mod server;
@@ -26,6 +27,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     Err(_) => Config {
       target: String::new(),
       remote_path: None,
+      package: None,
+      bin: None,
       sandbox: Default::default(),
       hooks: Default::default(),
     },
@@ -63,11 +66,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
   }
 
-  let package_name = detect_package_name()?;
+  let (package_name, bin_targets) =
+    detect_package_info(cfg.package.as_deref())?;
+  let bin_name = resolve_bin_name(
+    &package_name,
+    &bin_targets,
+    cfg.bin.as_deref(),
+    app.bin.as_deref(),
+  )?;
   let mut remote_path = cfg.remote_path(&package_name);
 
-  // Always resolve remote $HOME — needed for rsync,
-  // scp, and sandbox path arguments.
+  // Always resolve remote $HOME — needed for scp
+  // and sandbox path arguments.
   let home = ssh::resolve_home(&cfg.target)?;
   if remote_path.contains("$HOME") {
     remote_path = remote_path.replace("$HOME", &home);
@@ -85,18 +95,37 @@ fn main() -> Result<(), Box<dyn Error>> {
     Some(Command::Check) => {
       check_remote(&cfg, &remote_path, app.debug)?;
     }
+    Some(Command::Clippy) => {
+      clippy_remote(&cfg, &remote_path, app.debug)?;
+    }
     Some(Command::Run) => {
       server::run_server(
         &cfg,
         &remote_path,
         &home,
         &branch,
-        &package_name,
+        &bin_name,
         app.debug,
       )?;
     }
     Some(Command::Stop) => {
-      server::stop_server(&cfg.target, &remote_path)?;
+      server::stop_server(&cfg.target, &remote_path, &bin_name)?;
+    }
+    Some(Command::Deploy) => {
+      deploy::deploy(
+        &cfg,
+        &remote_path,
+        &home,
+        cfg.package.as_deref(),
+        &bin_name,
+        app.debug,
+      )?;
+    }
+    Some(Command::Undeploy) => {
+      deploy::undeploy(&cfg, &remote_path, &home, &bin_name)?;
+    }
+    Some(Command::Status) => {
+      server::status_server(&cfg.target, &remote_path, &bin_name)?;
     }
     Some(Command::Test { args }) => {
       test_remote(
@@ -106,6 +135,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &branch,
         &args,
         app.debug,
+        std::time::Duration::from_secs(app.timeout),
       )?;
     }
     None => {
@@ -120,6 +150,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[derive(serde::Deserialize)]
 struct CargoToml {
   package: Package,
+  #[serde(default)]
+  bin: Vec<BinTarget>,
 }
 
 #[derive(serde::Deserialize)]
@@ -127,10 +159,64 @@ struct Package {
   name: String,
 }
 
-fn detect_package_name() -> Result<String, Box<dyn Error>> {
-  let content = std::fs::read_to_string("Cargo.toml")?;
+#[derive(serde::Deserialize)]
+struct BinTarget {
+  name: String,
+}
+
+/// Find and parse the relevant Cargo.toml, returning the package
+/// name and any explicit [[bin]] target names.
+fn detect_package_info(
+  package: Option<&str>,
+) -> Result<(String, Vec<String>), Box<dyn Error>> {
+  let cargo_toml_path = match package {
+    Some(pkg) => {
+      let member_path = format!("{pkg}/Cargo.toml");
+      if std::path::Path::new(&member_path).exists() {
+        member_path
+      } else {
+        return Err(
+          format!(
+            "Package '{pkg}' not found: {member_path} does not exist"
+          )
+          .into(),
+        );
+      }
+    }
+    None => "Cargo.toml".to_string(),
+  };
+
+  let content = std::fs::read_to_string(&cargo_toml_path)?;
   let cargo: CargoToml = toml::from_str(&content)?;
-  Ok(cargo.package.name)
+  let bin_names: Vec<String> =
+    cargo.bin.into_iter().map(|b| b.name).collect();
+  Ok((cargo.package.name, bin_names))
+}
+
+/// Resolve the binary name from config/CLI/Cargo.toml.
+fn resolve_bin_name(
+  package_name: &str,
+  bin_targets: &[String],
+  config_bin: Option<&str>,
+  cli_bin: Option<&str>,
+) -> Result<String, Box<dyn Error>> {
+  if let Some(bin) = cli_bin {
+    return Ok(bin.to_string());
+  }
+  if let Some(bin) = config_bin {
+    return Ok(bin.to_string());
+  }
+  match bin_targets.len() {
+    0 => Ok(package_name.to_string()),
+    1 => Ok(bin_targets[0].clone()),
+    _ => Err(
+      format!(
+        "Multiple [[bin]] targets found ({}) — specify one with --bin",
+        bin_targets.join(", ")
+      )
+      .into(),
+    ),
+  }
 }
 
 fn check_remote(
@@ -138,10 +224,7 @@ fn check_remote(
   remote_path: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  if shim::sync(config, remote_path).is_err() {
-    eprintln!("[rcargo] shim sync failed, falling back to rsync");
-    git::sync_repo(&config.target, remote_path)?;
-  }
+  shim::sync(config, remote_path)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -153,34 +236,44 @@ fn check_remote(
   Ok(())
 }
 
+fn clippy_remote(
+  config: &Config,
+  remote_path: &str,
+  debug: bool,
+) -> Result<(), Box<dyn Error>> {
+  shim::sync(config, remote_path)?;
+
+  server::run_hooks(config, remote_path, debug)?;
+
+  println!("Running clippy on remote...");
+  let cmd = sandbox::clippy_cmd(remote_path);
+  ssh::ssh_run(&config.target, &cmd)?;
+
+  println!("Clippy complete!");
+  Ok(())
+}
+
 fn build_remote(
   config: &Config,
   remote_path: &str,
   home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  if shim::sync(config, remote_path).is_err() {
-    eprintln!("[rcargo] shim sync failed, falling back to rsync");
-    git::sync_repo(&config.target, remote_path)?;
-  }
+  shim::sync(config, remote_path)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd = sandbox::inner_cmd(config, remote_path, home, debug);
   match shim::run(config, remote_path, home, &cmd, debug) {
-    Ok(code) if code == 0 => {}
+    Ok(0) => {}
     Ok(code) => {
       return Err(
         format!("Remote build failed with exit code: {code}").into(),
       );
     }
     Err(e) => {
-      eprintln!(
-        "[rcargo] shim run failed: {e}, falling back to rsync + nono"
-      );
-      let cmd = sandbox::build_cmd(config, remote_path, home, debug);
-      ssh::ssh_run(&config.target, &cmd)?;
+      return Err(format!("Remote build failed: {e}").into());
     }
   }
 
@@ -195,11 +288,9 @@ fn test_remote(
   _branch: &str,
   extra_args: &[String],
   debug: bool,
+  timeout: std::time::Duration,
 ) -> Result<(), Box<dyn Error>> {
-  if shim::sync(config, remote_path).is_err() {
-    eprintln!("[rcargo] shim sync failed, falling back to rsync");
-    git::sync_repo(&config.target, remote_path)?;
-  }
+  shim::sync(config, remote_path)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -211,25 +302,22 @@ fn test_remote(
     extra_args,
     debug,
   );
-  match shim::run(config, remote_path, home, &cmd, debug) {
-    Ok(code) if code == 0 => {}
+  match shim::run_with_timeout(
+    config,
+    remote_path,
+    home,
+    &cmd,
+    debug,
+    timeout,
+  ) {
+    Ok(0) => {}
     Ok(code) => {
       return Err(
         format!("Remote tests failed with exit code: {code}").into(),
       );
     }
     Err(e) => {
-      eprintln!(
-        "[rcargo] shim run failed: {e}, falling back to rsync + nono"
-      );
-      let cmd = sandbox::test_cmd(
-        config,
-        remote_path,
-        home,
-        extra_args,
-        debug,
-      );
-      ssh::ssh_run(&config.target, &cmd)?;
+      return Err(format!("Remote tests failed: {e}").into());
     }
   }
 

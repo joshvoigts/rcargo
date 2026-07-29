@@ -27,9 +27,21 @@ pub struct App {
   #[arg(long, short)]
   pub branch: Option<String>,
 
+  /// Workspace member to install (overrides deploy.toml)
+  #[arg(long, short)]
+  pub package: Option<String>,
+
+  /// Binary name override (defaults to auto-detect from [[bin]] target)
+  #[arg(long)]
+  pub bin: Option<String>,
+
   /// Enable debug output
   #[arg(long)]
   pub debug: bool,
+
+  /// Timeout in seconds for remote commands (default: 600)
+  #[arg(long, default_value_t = 600)]
+  pub timeout: u64,
 
   /// Run in shim mode (for local testing)
   #[arg(long)]
@@ -42,6 +54,8 @@ pub enum Command {
   Build,
   /// Check code on remote (cargo check)
   Check,
+  /// Run clippy on remote (cargo clippy)
+  Clippy,
   /// Build and run on remote
   Run,
   /// Stop the running process on remote
@@ -52,4 +66,10 @@ pub enum Command {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     args: Vec<String>,
   },
+  /// Install binary and set up as systemd user service
+  Deploy,
+  /// Remove systemd service and installed binary
+  Undeploy,
+  /// Show status of deployed or running process
+  Status,
 }

@@ -1,5 +1,4 @@
 use crate::config::Config;
-use crate::git;
 use crate::sandbox;
 use crate::ssh;
 use std::{error::Error, time::Duration};
@@ -46,7 +45,20 @@ pub fn run_hooks(
 pub fn stop_server(
   host: &str,
   remote_path: &str,
+  bin_name: &str,
 ) -> Result<(), Box<dyn Error>> {
+  // Try systemd service first
+  let svc = format!("{bin_name}.service");
+  let systemd_result = ssh::ssh_capture(
+    host,
+    &format!("systemctl --user is-active {svc} 2>/dev/null"),
+  );
+  if matches!(&systemd_result, Ok(s) if s == "active") {
+    ssh::ssh_run(host, &format!("systemctl --user stop {svc}"))?;
+    println!("Service {svc} stopped");
+    return Ok(());
+  }
+
   let pid_file =
     ssh::shell_quote(&format!("{remote_path}/rcargo.pid"));
 
@@ -77,45 +89,90 @@ pub fn stop_server(
   Ok(())
 }
 
+pub fn status_server(
+  host: &str,
+  remote_path: &str,
+  bin_name: &str,
+) -> Result<(), Box<dyn Error>> {
+  let svc = format!("{bin_name}.service");
+
+  // Check if systemd service exists
+  let state = ssh::ssh_capture(
+    host,
+    &format!("systemctl --user is-active {svc} 2>/dev/null"),
+  );
+
+  if let Ok(ref s) = state {
+    if !s.is_empty() {
+      let _ = ssh::ssh_run(
+        host,
+        &format!(
+          "SYSTEMD_PAGER=cat systemctl --user status -l {svc}"
+        ),
+      );
+      return Ok(());
+    }
+  }
+
+  // Fall back to PID file
+  let pid_file =
+    ssh::shell_quote(&format!("{remote_path}/rcargo.pid"));
+  let result = ssh::ssh_capture(
+    host,
+    &format!("test -f {pid_file} && echo exists"),
+  );
+
+  if matches!(&result, Ok(s) if s == "exists") {
+    let pid = ssh::ssh_capture(host, &format!("cat {pid_file}"))?;
+    let running = ssh::ssh_capture(
+      host,
+      &format!("kill -0 {pid} 2>/dev/null && echo running"),
+    );
+
+    if matches!(&running, Ok(s) if s == "running") {
+      println!("Process {bin_name} is running (PID {pid})");
+    } else {
+      println!("Process {bin_name} has stale PID file (PID {pid})");
+    }
+  } else {
+    println!("No running process found");
+  }
+
+  Ok(())
+}
+
 pub fn run_server(
   config: &Config,
   remote_path: &str,
   home: &str,
   _branch: &str,
-  package_name: &str,
+  bin_name: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
   let host = &config.target;
 
-  stop_server(host, remote_path)?;
+  stop_server(host, remote_path, bin_name)?;
 
-  if crate::shim::sync(config, remote_path).is_err() {
-    eprintln!("[rcargo] shim sync failed, falling back to rsync");
-    git::sync_repo(host, remote_path)?;
-  }
+  crate::shim::sync(config, remote_path)?;
 
   run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd = sandbox::inner_cmd(config, remote_path, home, debug);
   match crate::shim::run(config, remote_path, home, &cmd, debug) {
-    Ok(code) if code == 0 => {}
+    Ok(0) => {}
     Ok(code) => {
       return Err(
         format!("Remote build failed with exit code: {code}").into(),
       );
     }
     Err(e) => {
-      eprintln!(
-        "[rcargo] shim run failed: {e}, falling back to rsync + nono"
-      );
-      let cmd = sandbox::build_cmd(config, remote_path, home, debug);
-      ssh::ssh_run(host, &cmd)?;
+      return Err(format!("Remote build failed: {e}").into());
     }
   }
 
   let bin_path = ssh::shell_quote(&format!(
-    "{remote_path}/target/release/{package_name}"
+    "{remote_path}/target/release/{bin_name}"
   ));
   let pid_file =
     ssh::shell_quote(&format!("{remote_path}/rcargo.pid"));

@@ -16,7 +16,7 @@ const SHIM_NAME: &str = "shim";
 pub struct ShimSession {
   child: Child,
   writer: ProtocolWriter<BufWriter<Box<dyn Write>>>,
-  reader: BufReader<Box<dyn Read>>,
+  reader: BufReader<Box<dyn Read + Send>>,
 }
 
 impl ShimSession {
@@ -44,7 +44,8 @@ impl ShimSession {
     let writer = ProtocolWriter::new(BufWriter::new(
       Box::new(stdin) as Box<dyn Write>
     ));
-    let reader = BufReader::new(Box::new(stdout) as Box<dyn Read>);
+    let reader =
+      BufReader::new(Box::new(stdout) as Box<dyn Read + Send>);
 
     // Drain stderr in the background.
     std::thread::spawn(move || {
@@ -92,6 +93,92 @@ impl ShimSession {
       io::stdout().write_all(&buf[..n])?;
       io::stdout().flush()?;
     }
+    let status = self.child.wait()?;
+    Ok(status.code().unwrap_or(1))
+  }
+
+  fn stream_output_with_timeout(
+    &mut self,
+    timeout: std::time::Duration,
+  ) -> io::Result<i32> {
+    use std::sync::mpsc;
+    use std::time::Instant;
+
+    let (tx, rx) = mpsc::channel();
+    let dummy =
+      BufReader::new(Box::new(io::empty()) as Box<dyn Read + Send>);
+    let mut stdout = std::mem::replace(&mut self.reader, dummy);
+
+    let stdout_handle = std::thread::spawn(move || {
+      let mut buf = [0u8; 4096];
+      loop {
+        match stdout.read(&mut buf) {
+          Ok(0) => break,
+          Ok(n) => {
+            let _ = tx.send(Ok(buf[..n].to_vec()));
+          }
+          Err(e) => {
+            let _ = tx.send(Err(e));
+            break;
+          }
+        }
+      }
+    });
+
+    let stderr_handle = {
+      let stderr = self.child.stderr.take();
+      std::thread::spawn(move || {
+        if let Some(mut stderr) = stderr {
+          let mut buf = [0u8; 4096];
+          loop {
+            match stderr.read(&mut buf) {
+              Ok(0) | Err(_) => break,
+              Ok(_) => {}
+            }
+          }
+        }
+      })
+    };
+
+    let start = Instant::now();
+    let mut timed_out = false;
+
+    loop {
+      let remaining = timeout.saturating_sub(start.elapsed());
+      if remaining.is_zero() {
+        timed_out = true;
+        break;
+      }
+
+      match rx.recv_timeout(remaining) {
+        Ok(Ok(data)) => {
+          io::stdout().write_all(&data)?;
+          io::stdout().flush()?;
+        }
+        Ok(Err(e)) => return Err(e),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+          timed_out = true;
+          break;
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+      }
+    }
+
+    let _ = stdout_handle.join();
+    let _ = stderr_handle.join();
+
+    if timed_out {
+      let _ = self.child.kill();
+      let _ = self.child.wait();
+      return Err(io::Error::new(
+        io::ErrorKind::TimedOut,
+        format!(
+          "Remote command timed out after {} seconds",
+          timeout.as_secs()
+        ),
+      ));
+    }
+
     let status = self.child.wait()?;
     Ok(status.code().unwrap_or(1))
   }
@@ -275,6 +362,45 @@ pub fn run(
   })?;
 
   let code = session.stream_output()?;
+  Ok(code)
+}
+
+pub fn run_with_timeout(
+  config: &Config,
+  remote_path: &str,
+  home: &str,
+  cmd: &str,
+  debug: bool,
+  timeout: std::time::Duration,
+) -> Result<i32, Box<dyn std::error::Error>> {
+  let shim_path = ensure_shim(&config.target)?;
+
+  ssh::ssh_capture(
+    &config.target,
+    &format!("mkdir -p {}", shell_quote(remote_path)),
+  )?;
+
+  let mut session = ShimSession::open(&config.target, &shim_path)?;
+
+  let handshake = session.receive()?;
+  if debug {
+    eprintln!("[shim] handshake: {handshake:?}");
+  }
+
+  let sandbox = build_sandbox_message(config, remote_path, home);
+  session.send(&sandbox)?;
+  let ok = session.receive()?;
+  if !matches!(ok, Message::Ok) {
+    return Err(format!("sandbox config rejected: {ok:?}").into());
+  }
+
+  sync_files_via_session(&mut session)?;
+
+  session.send(&Message::Run {
+    command: cmd.to_string(),
+  })?;
+
+  let code = session.stream_output_with_timeout(timeout)?;
   Ok(code)
 }
 

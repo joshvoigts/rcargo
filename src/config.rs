@@ -12,6 +12,14 @@ pub struct Config {
   #[serde(default)]
   pub remote_path: Option<String>,
 
+  /// Workspace member to install (e.g. "edwin-server")
+  #[serde(default)]
+  pub package: Option<String>,
+
+  /// Binary name override (defaults to auto-detect from [[bin]] target)
+  #[serde(default)]
+  pub bin: Option<String>,
+
   /// Sandbox configuration for remote builds
   #[serde(default)]
   pub sandbox: Sandbox,
