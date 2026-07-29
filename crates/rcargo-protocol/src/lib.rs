@@ -1,6 +1,6 @@
 use std::io::{self, BufReader, BufWriter, Read, Write};
 
-pub const VERSION: &str = env!("CARGO_GIT_VERSION");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone, Default)]
 pub struct SandboxConfig {

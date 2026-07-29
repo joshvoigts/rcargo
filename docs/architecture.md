@@ -18,6 +18,9 @@ locally. The system has three components:
 ```
 rcargo build
   → SSH: check shim version (bootstrap if needed)
+     ssh host ~/.rcargo/shim <expected_version>
+     exit 0 → version matches, skip deploy
+     exit 1 → deploy new binary via scp
   → SSH+shim: sync files via delta protocol
   → SSH: run prebuild hooks (outside sandbox)
   → SSH+shim: sandbox setup + execute cargo build

@@ -27,7 +27,3 @@ pub fn get_shim_binary(os: &str, arch: &str) -> Option<Vec<u8>> {
   }
   base64::engine::general_purpose::STANDARD.decode(b64).ok()
 }
-
-pub fn shim_version() -> &'static str {
-  rcargo_protocol::VERSION
-}

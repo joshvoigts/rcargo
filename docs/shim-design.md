@@ -78,22 +78,23 @@ matching during local file listing.
 On every run, the client checks for the shim on the remote:
 
 ```
-1. ssh host "uname -s && uname -m"
+1. ssh host "$SHIM_PATH <expected_version>"
+   → exit 0 if version matches, skip bootstrap
+
+2. ssh host "uname -s && uname -m"
    → detect OS + arch, select embedded binary
 
-2. ssh host "test -x $SHIM_PATH && $SHIM_PATH --version"
-   → if succeeds and version matches, skip bootstrap
-
-3. Bootstrap (base64 decode + chmod):
-   ssh host "echo '<base64>' | base64 -d > $SHIM_PATH && chmod +x $SHIM_PATH"
+3. Deploy (scp binary):
+   scp $LOCAL_BINARY host:$SHIM_PATH
 
 4. Verify:
-   ssh host "$SHIM_PATH --version"
+   ssh host "$SHIM_PATH <expected_version>"
 ```
 
 `$SHIM_PATH` defaults to `$HOME/.rcargo/shim`.
-
-If bootstrap fails, fall back to rsync (if available) or error.
+The shim accepts an optional version argument: if provided, it
+exits 0 on match or 1 on mismatch. Without arguments, it runs
+the protocol loop.
 
 ## Sync Protocol
 

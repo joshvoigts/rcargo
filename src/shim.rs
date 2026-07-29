@@ -197,6 +197,20 @@ pub fn ensure_shim(
 
   let shim_dir = format!("{home}/{SHIM_DIR}");
   let shim_path = format!("{shim_dir}/{SHIM_NAME}");
+  let expected_version = rcargo_protocol::VERSION;
+
+  // Check if shim exists and has the right version.
+  let status = std::process::Command::new("ssh")
+    .args([
+      "-o",
+      "BatchMode=yes",
+      host,
+      &format!("{shim_path} {expected_version}"),
+    ])
+    .status();
+  if matches!(status, Ok(s) if s.success()) {
+    return Ok(shim_path);
+  }
 
   let os_arch = ssh::ssh_capture(host, "uname -s && uname -m")?;
   let parts: Vec<&str> = os_arch.split('\n').collect();
@@ -213,17 +227,6 @@ pub fn ensure_shim(
     "aarch64" | "arm64" => "aarch64",
     _ => arch,
   };
-
-  let check = ssh::ssh_capture(
-    host,
-    &format!("test -x {shim_path} && {shim_path} --version"),
-  );
-  let expected_version = shim_embed::shim_version();
-  if let Ok(ref v) = check {
-    if v.trim() == format!("rcargo-shim {expected_version}") {
-      return Ok(shim_path);
-    }
-  }
 
   let binary = shim_embed::get_shim_binary(os_name, arch_name)
     .ok_or_else(|| {
@@ -266,9 +269,16 @@ pub fn ensure_shim(
 
   ssh::ssh_capture(host, &format!("chmod +x {shim_path}"))?;
 
-  let verify =
-    ssh::ssh_capture(host, &format!("{shim_path} --version"))?;
-  if verify.trim() != format!("rcargo-shim {expected_version}") {
+  // Verify the deployed shim runs correctly.
+  let status = std::process::Command::new("ssh")
+    .args([
+      "-o",
+      "BatchMode=yes",
+      host,
+      &format!("{shim_path} {expected_version}"),
+    ])
+    .status();
+  if !matches!(status, Ok(s) if s.success()) {
     return Err("shim bootstrap verification failed".into());
   }
 

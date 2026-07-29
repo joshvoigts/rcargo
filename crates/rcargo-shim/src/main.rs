@@ -12,23 +12,14 @@ use std::process::Command;
 fn main() {
   let args: Vec<String> = std::env::args().collect();
 
-  match args.get(1).map(|s| s.as_str()) {
-    Some("--version") => {
-      println!("rcargo-shim {}", rcargo_protocol::VERSION);
-      return;
+  if let Some(expected) = args.get(1) {
+    if expected == rcargo_protocol::VERSION {
+      std::process::exit(0);
+    } else {
+      std::process::exit(1);
     }
-    Some("--shim") => {
-      run_shim_mode();
-      return;
-    }
-    _ => {}
   }
 
-  eprintln!("Usage: rcargo-shim [--version|--shim]");
-  std::process::exit(1);
-}
-
-fn run_shim_mode() {
   if let Err(e) = shim_loop() {
     eprintln!("[shim] fatal: {e}");
     std::process::exit(1);
