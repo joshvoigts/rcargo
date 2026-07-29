@@ -298,6 +298,19 @@ impl<R: Read> ProtocolReader<R> {
   }
 }
 
+/// Read a single length-prefixed message from a reader.
+pub fn read_message(reader: &mut impl Read) -> io::Result<Message> {
+  let mut len_buf = [0u8; 4];
+  reader.read_exact(&mut len_buf)?;
+  let len = u32::from_be_bytes(len_buf) as usize;
+  let mut payload = vec![0u8; len];
+  reader.read_exact(&mut payload)?;
+  let payload = String::from_utf8(payload)
+    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+  Message::decode(&payload)
+    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
 pub struct ProtocolWriter<W: Write> {
   writer: BufWriter<W>,
 }

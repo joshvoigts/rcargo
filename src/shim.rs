@@ -3,7 +3,7 @@ use crate::shim_embed;
 use crate::ssh::{self, shell_quote};
 use base64::Engine;
 use ignore::WalkBuilder;
-use rcargo_protocol::{Message, ProtocolWriter};
+use rcargo_protocol::{self as proto, Message, ProtocolWriter};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::{self, BufReader, BufWriter, Read, Write};
@@ -25,7 +25,7 @@ impl ShimSession {
     shim_path: &str,
   ) -> Result<Self, Box<dyn std::error::Error>> {
     let mut child = Command::new("ssh")
-      .args(["-t", "-o", "BatchMode=yes", host, shim_path])
+      .args(["-T", "-o", "BatchMode=yes", host, shim_path])
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped())
@@ -66,15 +66,7 @@ impl ShimSession {
   }
 
   fn receive(&mut self) -> io::Result<Message> {
-    let mut len_buf = [0u8; 4];
-    self.reader.read_exact(&mut len_buf)?;
-    let len = u32::from_be_bytes(len_buf) as usize;
-    let mut payload = vec![0u8; len];
-    self.reader.read_exact(&mut payload)?;
-    let payload = String::from_utf8(payload)
-      .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    Message::decode(&payload)
-      .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    proto::read_message(&mut self.reader)
   }
 
   fn stream_output(&mut self) -> io::Result<i32> {

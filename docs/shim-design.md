@@ -139,8 +139,8 @@ Conventions in the message descriptions below:
 ← SKIP <path>
   File unchanged (same size + mtime). No action needed.
 
-← UPLOAD <path> <size>
-  File is new or changed. Client will send full file data next.
+← DATA <path> <data_bytes_base64>
+  Client sends full file content.
 
 ← DELETE <path>
   File exists on remote but not locally. Shim removes it.
@@ -148,9 +148,6 @@ Conventions in the message descriptions below:
 ← DELTA <path> <delta_bytes_base64>
   File changed. Client sends a precomputed fast_rsync delta.
   (The client fetches signatures via batched SIG messages — see below.)
-
-← DATA <path> <data_bytes_base64>
-  Client sends full file content (for UPLOAD).
 
 ← END_SYNC
   Client signals all sync actions sent.
