@@ -152,7 +152,7 @@ pub fn run_server(
 
   stop_server(host, remote_path, bin_name)?;
 
-  crate::shim::sync(config, remote_path, home)?;
+  crate::shim::sync_only(config, remote_path, home)?;
 
   run_hooks(config, remote_path, debug)?;
 

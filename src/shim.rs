@@ -271,13 +271,14 @@ pub fn ensure_shim(
   Ok(shim_path)
 }
 
-pub fn sync(
+pub fn sync_only(
   config: &Config,
   remote_path: &str,
   home: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error>> {
   let shim_path = ensure_shim(&config.target, home)?;
-  shim_sync(&config.target, &shim_path, remote_path)
+  shim_sync(&config.target, &shim_path, remote_path)?;
+  Ok(shim_path)
 }
 
 fn shim_sync(
@@ -304,16 +305,17 @@ fn shim_sync(
     }
   }
 
-  // Sandbox is disabled here because this sync path is used for
-  // read-only commands (check, clippy) that don't execute target
-  // code. The shim only applies sandboxing for build/test/run.
-  session.send(&Message::Sandbox {
-    enabled: false,
-    workdir: remote_path.to_string(),
-    write: vec![],
-    read: vec![],
-    net: vec![],
-  })?;
+  // Sandbox is disabled because this session only syncs files.
+  // Sandboxing is applied by run_only for build/test/run.
+  session.send(&Message::Sandbox(
+    rcargo_protocol::SandboxConfig {
+      enabled: false,
+      workdir: remote_path.to_string(),
+      write: vec![],
+      read: vec![],
+      net: vec![],
+    },
+  ))?;
   let ok = session.receive()?;
   if !matches!(ok, Message::Ok) {
     return Err(format!("sandbox config rejected: {ok:?}").into());
@@ -332,21 +334,61 @@ pub fn run_only(
   debug: bool,
 ) -> Result<i32, Box<dyn std::error::Error>> {
   let shim_path = ensure_shim(&config.target, home)?;
-
-  ssh::ssh_capture(
+  shim_run(
     &config.target,
+    &shim_path,
+    remote_path,
+    config,
+    home,
+    cmd,
+    debug,
+  )
+}
+
+pub fn run_only_with_timeout(
+  config: &Config,
+  remote_path: &str,
+  home: &str,
+  cmd: &str,
+  debug: bool,
+  timeout: std::time::Duration,
+) -> Result<i32, Box<dyn std::error::Error>> {
+  let shim_path = ensure_shim(&config.target, home)?;
+  shim_run_with_timeout(
+    &config.target,
+    &shim_path,
+    remote_path,
+    config,
+    home,
+    cmd,
+    debug,
+    timeout,
+  )
+}
+
+fn shim_run(
+  host: &str,
+  shim_path: &str,
+  remote_path: &str,
+  config: &Config,
+  home: &str,
+  cmd: &str,
+  debug: bool,
+) -> Result<i32, Box<dyn std::error::Error>> {
+  ssh::ssh_capture(
+    host,
     &format!("mkdir -p {}", shell_quote(remote_path)),
   )?;
 
-  let mut session = ShimSession::open(&config.target, &shim_path)?;
+  let mut session = ShimSession::open(host, shim_path)?;
 
   let handshake = session.receive()?;
   if debug {
     eprintln!("[shim] handshake: {handshake:?}");
   }
 
-  let sandbox = build_sandbox_message(config, remote_path, home);
-  session.send(&sandbox)?;
+  let sandbox = build_sandbox_config(config, remote_path, home);
+  session.send(&Message::Sandbox(sandbox))?;
   let ok = session.receive()?;
   if !matches!(ok, Message::Ok) {
     return Err(format!("sandbox config rejected: {ok:?}").into());
@@ -360,30 +402,30 @@ pub fn run_only(
   Ok(code)
 }
 
-pub fn run_only_with_timeout(
-  config: &Config,
+fn shim_run_with_timeout(
+  host: &str,
+  shim_path: &str,
   remote_path: &str,
+  config: &Config,
   home: &str,
   cmd: &str,
   debug: bool,
   timeout: std::time::Duration,
 ) -> Result<i32, Box<dyn std::error::Error>> {
-  let shim_path = ensure_shim(&config.target, home)?;
-
   ssh::ssh_capture(
-    &config.target,
+    host,
     &format!("mkdir -p {}", shell_quote(remote_path)),
   )?;
 
-  let mut session = ShimSession::open(&config.target, &shim_path)?;
+  let mut session = ShimSession::open(host, shim_path)?;
 
   let handshake = session.receive()?;
   if debug {
     eprintln!("[shim] handshake: {handshake:?}");
   }
 
-  let sandbox = build_sandbox_message(config, remote_path, home);
-  session.send(&sandbox)?;
+  let sandbox = build_sandbox_config(config, remote_path, home);
+  session.send(&Message::Sandbox(sandbox))?;
   let ok = session.receive()?;
   if !matches!(ok, Message::Ok) {
     return Err(format!("sandbox config rejected: {ok:?}").into());
@@ -542,6 +584,11 @@ struct LocalFile {
 
 fn build_local_file_list(
 ) -> Result<Vec<LocalFile>, Box<dyn std::error::Error>> {
+  if !std::path::Path::new("Cargo.toml").exists() {
+    return Err(
+      "not in a Cargo project root (no Cargo.toml found)".into(),
+    );
+  }
   let walker =
     WalkBuilder::new(".").hidden(false).git_ignore(true).build();
 
@@ -603,13 +650,13 @@ fn is_gitignored(
   matches!(gitignore.matched(path, false), Match::Ignore(_))
 }
 
-fn build_sandbox_message(
+fn build_sandbox_config(
   config: &Config,
   remote_path: &str,
   home: &str,
-) -> Message {
+) -> rcargo_protocol::SandboxConfig {
   if !config.sandbox.enabled {
-    return Message::Sandbox {
+    return rcargo_protocol::SandboxConfig {
       enabled: false,
       workdir: remote_path.to_string(),
       write: vec![],
@@ -647,7 +694,7 @@ fn build_sandbox_message(
     net.push(d.clone());
   }
 
-  Message::Sandbox {
+  rcargo_protocol::SandboxConfig {
     enabled: true,
     workdir: remote_path.to_string(),
     write,

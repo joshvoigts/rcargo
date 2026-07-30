@@ -3,6 +3,23 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
+#[derive(Deserialize)]
+pub struct CargoToml {
+  pub package: CargoPackage,
+  #[serde(default)]
+  pub bin: Vec<BinTarget>,
+}
+
+#[derive(Deserialize)]
+pub struct CargoPackage {
+  pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct BinTarget {
+  pub name: String,
+}
+
 #[derive(Debug, Deserialize, Default)]
 pub struct Config {
   /// The target host to deploy to (anything you'd pass to `ssh`)

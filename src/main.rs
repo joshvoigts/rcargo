@@ -133,22 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-#[derive(serde::Deserialize)]
-struct CargoToml {
-  package: Package,
-  #[serde(default)]
-  bin: Vec<BinTarget>,
-}
-
-#[derive(serde::Deserialize)]
-struct Package {
-  name: String,
-}
-
-#[derive(serde::Deserialize)]
-struct BinTarget {
-  name: String,
-}
+use crate::config::CargoToml;
 
 /// Find and parse the relevant Cargo.toml, returning the package
 /// name and any explicit [[bin]] target names.
@@ -211,7 +196,7 @@ fn check_remote(
   home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path, home)?;
+  shim::sync_only(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -229,7 +214,7 @@ fn clippy_remote(
   home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path, home)?;
+  shim::sync_only(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -247,7 +232,7 @@ fn build_remote(
   home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path, home)?;
+  shim::sync_only(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -277,7 +262,7 @@ fn test_remote(
   debug: bool,
   timeout: std::time::Duration,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync(config, remote_path, home)?;
+  shim::sync_only(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 

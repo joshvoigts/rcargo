@@ -11,7 +11,6 @@ fn service_name(package_name: &str) -> String {
 fn generate_service_file(
   bin_name: &str,
   remote_path: &str,
-  _home: &str,
   config: &Config,
 ) -> String {
   let bin_path = format!("{remote_path}/target/release/{bin_name}");
@@ -56,7 +55,7 @@ pub fn deploy(
   // Stop any existing process (PID file or systemd service)
   let _ = server::stop_server(host, remote_path, bin_name);
 
-  crate::shim::sync(config, remote_path, home)?;
+  crate::shim::sync_only(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -77,7 +76,7 @@ pub fn deploy(
 
   println!("Configuring systemd service...");
   let service_content =
-    generate_service_file(bin_name, remote_path, home, config);
+    generate_service_file(bin_name, remote_path, config);
   let service_dir = format!("{home}/.config/systemd/user");
   let service_path = format!("{service_dir}/{svc}");
 

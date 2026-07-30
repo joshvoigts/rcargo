@@ -56,21 +56,9 @@ fn shim_loop() -> Result<(), Box<dyn std::error::Error>> {
         }
         writer.send(&Message::EndList)?;
       }
-      Message::Sandbox {
-        enabled,
-        workdir: wd,
-        write,
-        read,
-        net,
-      } => {
-        sandbox_config = SandboxConfig {
-          enabled,
-          workdir: wd.clone(),
-          write,
-          read,
-          net,
-        };
-        workdir = Some(PathBuf::from(&wd));
+      Message::Sandbox(config) => {
+        workdir = Some(PathBuf::from(&config.workdir));
+        sandbox_config = config;
         writer.send(&Message::Ok)?;
       }
       Message::Skip { .. } => {

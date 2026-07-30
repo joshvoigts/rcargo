@@ -110,13 +110,7 @@ pub enum Message {
     data: String,
   },
   EndSync,
-  Sandbox {
-    enabled: bool,
-    workdir: String,
-    write: Vec<String>,
-    read: Vec<String>,
-    net: Vec<String>,
-  },
+  Sandbox(SandboxConfig),
   Run {
     command: String,
   },
@@ -156,20 +150,7 @@ impl Message {
         format!("DATA {path} {data}")
       }
       Message::EndSync => "END_SYNC".to_string(),
-      Message::Sandbox {
-        enabled,
-        workdir,
-        write,
-        read,
-        net,
-      } => {
-        let config = SandboxConfig {
-          enabled: *enabled,
-          workdir: workdir.clone(),
-          write: write.clone(),
-          read: read.clone(),
-          net: net.clone(),
-        };
+      Message::Sandbox(config) => {
         format!("SANDBOX {}", config.encode())
       }
       Message::Run { command } => {
@@ -263,13 +244,7 @@ impl Message {
       "END_SYNC" => Ok(Message::EndSync),
       "SANDBOX" => {
         let config = SandboxConfig::decode(rest)?;
-        Ok(Message::Sandbox {
-          enabled: config.enabled,
-          workdir: config.workdir,
-          write: config.write,
-          read: config.read,
-          net: config.net,
-        })
+        Ok(Message::Sandbox(config))
       }
       "RUN" => Ok(Message::Run {
         command: rest.to_string(),
@@ -471,7 +446,7 @@ mod tests {
 
   #[test]
   fn sandbox_roundtrip() {
-    roundtrip(&Message::Sandbox {
+    roundtrip(&Message::Sandbox(SandboxConfig {
       enabled: true,
       workdir: "/home/user/proj".into(),
       write: vec![
@@ -480,7 +455,7 @@ mod tests {
       ],
       read: vec!["/usr/include".into()],
       net: vec!["crates.io".into(), "github.com".into()],
-    });
+    }));
   }
 
   #[test]
@@ -518,13 +493,13 @@ mod tests {
 
   #[test]
   fn sandbox_no_net_roundtrip() {
-    roundtrip(&Message::Sandbox {
+    roundtrip(&Message::Sandbox(SandboxConfig {
       enabled: false,
       workdir: "/tmp".into(),
       write: vec![],
       read: vec![],
       net: vec![],
-    });
+    }));
   }
 
   #[test]
@@ -562,13 +537,13 @@ mod tests {
 
   #[test]
   fn sandbox_message_spaces_roundtrip() {
-    roundtrip(&Message::Sandbox {
+    roundtrip(&Message::Sandbox(SandboxConfig {
       enabled: true,
       workdir: "/home/user/my project".into(),
       write: vec!["/home/user/my project/src".into()],
       read: vec!["/usr/my includes".into()],
       net: vec!["crates.io".into()],
-    });
+    }));
   }
 
   #[test]
