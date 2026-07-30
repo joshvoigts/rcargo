@@ -47,7 +47,6 @@ pub fn deploy(
   config: &Config,
   remote_path: &str,
   home: &str,
-  _package: Option<&str>,
   bin_name: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {

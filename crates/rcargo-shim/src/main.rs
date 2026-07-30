@@ -192,6 +192,11 @@ fn validate_path(
   workdir: &Path,
   path: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+  if path.starts_with('/') {
+    return Err(
+      format!("absolute path '{path}' is not allowed").into(),
+    );
+  }
   for component in path.split('/') {
     if component == ".." {
       return Err(
@@ -255,6 +260,12 @@ mod tests {
     std::fs::create_dir_all(tmp.path().join("a/b")).unwrap();
     let result = validate_path(tmp.path(), "a/b/hello.txt").unwrap();
     assert_eq!(result, tmp.path().join("a/b/hello.txt"));
+  }
+
+  #[test]
+  fn validate_rejects_absolute_path() {
+    let tmp = setup_workdir();
+    assert!(validate_path(tmp.path(), "/etc/passwd").is_err());
   }
 
   #[test]

@@ -17,14 +17,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   let mut cfg = match Config::load() {
     Ok(c) => c,
-    Err(_) => Config {
-      target: String::new(),
-      remote_path: None,
-      package: None,
-      bin: None,
-      sandbox: Default::default(),
-      hooks: Default::default(),
-    },
+    Err(e) => {
+      eprintln!("warning: {e}");
+      Config {
+        target: String::new(),
+        remote_path: None,
+        package: None,
+        bin: None,
+        sandbox: Default::default(),
+        hooks: Default::default(),
+      }
+    }
   };
 
   if let Some(target) = app.target {
@@ -103,7 +106,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         &cfg,
         &remote_path,
         &home,
-        cfg.package.as_deref(),
         &bin_name,
         app.debug,
       )?;

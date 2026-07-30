@@ -1,22 +1,20 @@
 # Shim Design
 
-Eliminate `rsync` and remote `nono` CLI dependencies by shipping a lightweight
-shim binary that handles sync (via `fast_rsync`) and sandboxing (via
-`landlock` / Seatbelt FFI) natively.
+A lightweight shim binary handles sync (via `fast_rsync`) and sandboxing (via
+`landlock` / Seatbelt FFI) natively, eliminating external `rsync` dependencies.
 
 The shim is not a long-running process — it runs once per invocation and exits when the
-command exits. It's a drop-in replacement for the `nono run ...` wrapper:
-sync files, apply sandbox, exec command, done.
+command exits. It syncs files, applies sandbox, execs the command, then exits.
 
 ## Goals
 
 - No `rsync` required on the local machine
-- No `nono` CLI required on the remote machine
+- No external sandboxing tools required on the remote machine
 - Delta transfer for changed files (skip unchanged, patch changed)
-- Same sandboxing guarantees as current `nono` approach
+- Kernel-enforced sandboxing (Landlock on Linux, Seatbelt on macOS)
 - Minimal added dependencies (~2–3 MB total)
 
-## Dependencies (added)
+## Dependencies
 
 | Crate | Size | Purpose | Platform |
 |-------|------|---------|----------|
@@ -24,8 +22,8 @@ sync files, apply sandbox, exec command, done.
 | `landlock` 0.4.5 | 220 KB | Filesystem sandboxing | Linux |
 | (Seatbelt FFI) | ~0 | Filesystem + network sandboxing | macOS |
 
-No `nono` library — its ~113 MB of deps are sigstore/keyring/cert stuff
-we don't need. We only need raw Landlock rulesets and Seatbelt profiles.
+We only need raw Landlock rulesets and Seatbelt profiles — no
+large transitive dependency trees.
 
 ## Binary Distribution
 
@@ -278,8 +276,8 @@ If verification fails, the shim falls back to requesting a full upload.
 
 ## Sandboxing
 
-The shim applies sandboxing **just before** executing the command.
-No `nono` CLI needed — direct kernel primitives.
+The shim applies sandboxing **just before** executing the command
+using direct kernel primitives.
 
 ### Linux: Landlock
 
@@ -314,7 +312,7 @@ fn apply_sandbox(paths: &[SandboxPath]) -> Result<()> {
 ```
 
 Network filtering requires Landlock ABI v4 (kernel 5.19+). On older
-kernels, fall back to allow-all network (same as current nono behavior).
+kernels, fall back to allow-all network (no kernel network filtering).
 Note: Landlock network rules only restrict TCP bind/connect — UDP and
 DNS resolution are not restricted.
 
@@ -322,7 +320,7 @@ DNS resolution are not restricted.
 
 Seatbelt profiles use a Scheme-like DSL (not JSON/plist). The shim
 generates a profile string dynamically from the same config that
-currently drives `nono` CLI flags.
+currently drives sandbox configuration.
 
 ```rust
 fn build_seatbelt_profile(
@@ -383,7 +381,7 @@ fn apply_seatbelt(profile: &str) -> Result<()> {
 }
 ```
 
-nono uses Apple's private `sandbox_init()` API rather than the newer
+rcargo uses Apple's private `sandbox_init()` API rather than the newer
 `sandbox_apply_container()`. While technically undocumented, this API
 has been stable for over a decade and is widely used by third-party
 tools (including `sandbox-exec`).
@@ -457,12 +455,11 @@ ssh::ssh_run(&config.target, &cmd)?;
 
 // After: shim receives the command via RUN message,
 // applies sandbox, and execs it.
-// The client just sends the inner command (no nono wrapper).
+// The client just sends the inner command.
 ```
 
-The `sandbox::build_cmd` function still exists on the client side to
-construct the command string, but it omits the `nono run ...` wrapper.
-The shim applies sandboxing natively.
+The `sandbox` module still exists on the client side to
+construct the command string. The shim applies sandboxing natively.
 
 ### Fallback
 
@@ -496,13 +493,13 @@ The fallback path preserves backward compatibility during rollout.
 - **Remote rustc not needed**: Shim is a prebuilt binary, no compilation on remote.
 - **Version drift**: If client and shim versions mismatch, protocol may break.
   Mitigated by version check in HANDSHAKE.
-- **Seatbelt FFI**: Untested territory for rcargo. nono's macOS code can serve
-  as reference. Small surface area (~200 lines).
+- **Seatbelt FFI**: Small surface area (~200 lines) using Apple's
+  private `sandbox_init()` API.
 - **fast_rsync MD4**: Uses legacy MD4 hashes. Not a security concern (we're not
   authenticating), but we verify patched output with SHA-256 to catch corruption.
 - **Landlock network limits**: Landlock ABI v4+ network rules only restrict TCP
   bind/connect. UDP and DNS are unrestricted. On kernels < 5.19, no network
-  filtering at all — same as current nono behavior.
+  filtering at all.
 - **SSH pipe buffering**: Protocol messages and raw command output share the same
   stdout pipe. The shim must flush after each protocol message to avoid interleaving.
   If SSH buffers aggressively, there could be startup latency for command output.
