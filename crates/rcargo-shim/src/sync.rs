@@ -1,4 +1,5 @@
 use base64::Engine;
+use rcargo_protocol::should_exclude;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
@@ -70,15 +71,11 @@ fn should_exclude_dir(path: &Path, base: &Path) -> bool {
   name == ".git" || name == "target"
 }
 
-fn should_exclude(path: &str) -> bool {
-  let parts: Vec<&str> = path.split('/').collect();
-  for part in &parts {
-    if *part == ".git" || *part == "target" {
-      return true;
-    }
-  }
-  false
-}
+// The shim intentionally does not filter by .gitignore patterns.
+// The client handles .gitignore locally when building its file
+// list and when deciding which remote files to delete. The shim
+// only needs hard-coded exclusions (.git, target) so that it
+// doesn't list build artifacts or VCS metadata.
 
 pub fn apply_upload(
   full: &Path,

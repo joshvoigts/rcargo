@@ -152,14 +152,20 @@ pub fn run_server(
 
   stop_server(host, remote_path, bin_name)?;
 
-  crate::shim::sync_only(config, remote_path, home)?;
+  let shim_path = crate::shim::sync_only(config, remote_path, home)?;
 
   run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd = sandbox::inner_cmd(config, remote_path);
-  match crate::shim::run_only(config, remote_path, home, &cmd, debug)
-  {
+  match crate::shim::run_only(
+    config,
+    remote_path,
+    home,
+    &shim_path,
+    &cmd,
+    debug,
+  ) {
     Ok(0) => {}
     Ok(code) => {
       return Err(

@@ -3,6 +3,7 @@ use crate::sandbox;
 use crate::server;
 use crate::ssh;
 use std::error::Error;
+use std::process::Command;
 
 fn service_name(package_name: &str) -> String {
   format!("{package_name}.service")
@@ -55,14 +56,20 @@ pub fn deploy(
   // Stop any existing process (PID file or systemd service)
   let _ = server::stop_server(host, remote_path, bin_name);
 
-  crate::shim::sync_only(config, remote_path, home)?;
+  let shim_path = crate::shim::sync_only(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd = sandbox::inner_cmd(config, remote_path);
-  match crate::shim::run_only(config, remote_path, home, &cmd, debug)
-  {
+  match crate::shim::run_only(
+    config,
+    remote_path,
+    home,
+    &shim_path,
+    &cmd,
+    debug,
+  ) {
     Ok(0) => {}
     Ok(code) => {
       return Err(
@@ -80,16 +87,37 @@ pub fn deploy(
   let service_dir = format!("{home}/.config/systemd/user");
   let service_path = format!("{service_dir}/{svc}");
 
-  let delimiter = "RCARGO_EOF_4f8a2b";
   ssh::ssh_capture(
     host,
-    &format!(
-      "mkdir -p {dir} && cat > {path} << '{delimiter}'\n{content}{delimiter}",
-      dir = ssh::shell_quote(&service_dir),
-      path = ssh::shell_quote(&service_path),
-      content = service_content,
-    ),
+    &format!("mkdir -p {}", ssh::shell_quote(&service_dir)),
   )?;
+
+  // Write the service file via scp to avoid heredoc
+  // delimiter collision issues with ssh piping.
+  let tmp = std::env::temp_dir()
+    .join(format!("rcargo-svc-{}.conf", std::process::id()));
+  std::fs::write(&tmp, &service_content)?;
+  let scp_status = Command::new("scp")
+    .args([
+      "-q",
+      "-o",
+      "BatchMode=yes",
+      tmp.to_str().unwrap(),
+      &format!("{host}:{service_path}"),
+    ])
+    .status();
+  std::fs::remove_file(&tmp).ok();
+  let status =
+    scp_status.map_err(|e| format!("failed to run scp: {e}"))?;
+  if !status.success() {
+    return Err(
+      format!(
+        "scp failed with exit code: {}",
+        status.code().unwrap_or(-1)
+      )
+      .into(),
+    );
+  }
 
   ssh::ssh_run(host, "systemctl --user daemon-reload")?;
   ssh::ssh_run(host, &format!("systemctl --user enable {svc}"))?;

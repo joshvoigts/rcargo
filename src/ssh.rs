@@ -177,7 +177,9 @@ pub fn ssh_capture(
   host: &str,
   cmd: &str,
 ) -> Result<String, Box<dyn Error>> {
-  let output = Command::new("ssh").args([host, cmd]).output()?;
+  let output = Command::new("ssh")
+    .args(["-o", "BatchMode=yes", host, cmd])
+    .output()?;
 
   if !output.status.success() {
     let status = output.status;

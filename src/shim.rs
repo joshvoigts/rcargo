@@ -3,7 +3,9 @@ use crate::shim_embed;
 use crate::ssh::{self, shell_quote};
 use base64::Engine;
 use ignore::WalkBuilder;
-use rcargo_protocol::{self as proto, Message, ProtocolWriter};
+use rcargo_protocol::{
+  self as proto, should_exclude, Message, ProtocolWriter,
+};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::{self, BufReader, BufWriter, Read, Write};
@@ -330,18 +332,19 @@ pub fn run_only(
   config: &Config,
   remote_path: &str,
   home: &str,
+  shim_path: &str,
   cmd: &str,
   debug: bool,
 ) -> Result<i32, Box<dyn std::error::Error>> {
-  let shim_path = ensure_shim(&config.target, home)?;
-  shim_run(
+  shim_exec(
     &config.target,
-    &shim_path,
+    shim_path,
     remote_path,
     config,
     home,
     cmd,
     debug,
+    None,
   )
 }
 
@@ -349,24 +352,24 @@ pub fn run_only_with_timeout(
   config: &Config,
   remote_path: &str,
   home: &str,
+  shim_path: &str,
   cmd: &str,
   debug: bool,
   timeout: std::time::Duration,
 ) -> Result<i32, Box<dyn std::error::Error>> {
-  let shim_path = ensure_shim(&config.target, home)?;
-  shim_run_with_timeout(
+  shim_exec(
     &config.target,
-    &shim_path,
+    shim_path,
     remote_path,
     config,
     home,
     cmd,
     debug,
-    timeout,
+    Some(timeout),
   )
 }
 
-fn shim_run(
+fn shim_exec(
   host: &str,
   shim_path: &str,
   remote_path: &str,
@@ -374,6 +377,7 @@ fn shim_run(
   home: &str,
   cmd: &str,
   debug: bool,
+  timeout: Option<std::time::Duration>,
 ) -> Result<i32, Box<dyn std::error::Error>> {
   ssh::ssh_capture(
     host,
@@ -398,44 +402,10 @@ fn shim_run(
     command: cmd.to_string(),
   })?;
 
-  let code = session.stream_output()?;
-  Ok(code)
-}
-
-fn shim_run_with_timeout(
-  host: &str,
-  shim_path: &str,
-  remote_path: &str,
-  config: &Config,
-  home: &str,
-  cmd: &str,
-  debug: bool,
-  timeout: std::time::Duration,
-) -> Result<i32, Box<dyn std::error::Error>> {
-  ssh::ssh_capture(
-    host,
-    &format!("mkdir -p {}", shell_quote(remote_path)),
-  )?;
-
-  let mut session = ShimSession::open(host, shim_path)?;
-
-  let handshake = session.receive()?;
-  if debug {
-    eprintln!("[shim] handshake: {handshake:?}");
-  }
-
-  let sandbox = build_sandbox_config(config, remote_path, home);
-  session.send(&Message::Sandbox(sandbox))?;
-  let ok = session.receive()?;
-  if !matches!(ok, Message::Ok) {
-    return Err(format!("sandbox config rejected: {ok:?}").into());
-  }
-
-  session.send(&Message::Run {
-    command: cmd.to_string(),
-  })?;
-
-  let code = session.stream_output_with_timeout(timeout)?;
+  let code = match timeout {
+    Some(t) => session.stream_output_with_timeout(t)?,
+    None => session.stream_output()?,
+  };
   Ok(code)
 }
 
@@ -621,15 +591,6 @@ fn build_local_file_list(
     });
   }
   Ok(files)
-}
-
-fn should_exclude(path: &str) -> bool {
-  for part in path.split('/') {
-    if part == ".git" || part == "target" {
-      return true;
-    }
-  }
-  false
 }
 
 fn build_gitignore_matcher(

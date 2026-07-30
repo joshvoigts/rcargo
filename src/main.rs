@@ -7,7 +7,7 @@ mod shim;
 mod shim_embed;
 mod ssh;
 
-use crate::config::Config;
+use crate::config::{CargoToml, Config};
 use clap::Parser;
 use cli::{App, Command};
 use std::error::Error;
@@ -133,8 +133,6 @@ fn main() -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-use crate::config::CargoToml;
-
 /// Find and parse the relevant Cargo.toml, returning the package
 /// name and any explicit [[bin]] target names.
 fn detect_package_info(
@@ -232,13 +230,20 @@ fn build_remote(
   home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync_only(config, remote_path, home)?;
+  let shim_path = shim::sync_only(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Building on remote...");
   let cmd = sandbox::inner_cmd(config, remote_path);
-  match shim::run_only(config, remote_path, home, &cmd, debug) {
+  match shim::run_only(
+    config,
+    remote_path,
+    home,
+    &shim_path,
+    &cmd,
+    debug,
+  ) {
     Ok(0) => {}
     Ok(code) => {
       return Err(
@@ -262,7 +267,7 @@ fn test_remote(
   debug: bool,
   timeout: std::time::Duration,
 ) -> Result<(), Box<dyn Error>> {
-  shim::sync_only(config, remote_path, home)?;
+  let shim_path = shim::sync_only(config, remote_path, home)?;
 
   server::run_hooks(config, remote_path, debug)?;
 
@@ -272,6 +277,7 @@ fn test_remote(
     config,
     remote_path,
     home,
+    &shim_path,
     &cmd,
     debug,
     timeout,

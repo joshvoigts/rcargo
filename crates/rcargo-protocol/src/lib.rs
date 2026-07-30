@@ -2,6 +2,15 @@ use std::io::{self, BufReader, BufWriter, Read, Write};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub fn should_exclude(path: &str) -> bool {
+  for part in path.split('/') {
+    if part == ".git" || part == "target" {
+      return true;
+    }
+  }
+  false
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SandboxConfig {
   pub enabled: bool,
@@ -593,5 +602,14 @@ mod tests {
   #[test]
   fn decode_error_on_bad_file_size() {
     assert!(Message::decode("FILE a not_a_number 123").is_err());
+  }
+
+  #[test]
+  fn should_exclude_git_and_target() {
+    assert!(should_exclude(".git/HEAD"));
+    assert!(should_exclude("target/release/binary"));
+    assert!(should_exclude("foo/target/debug/deps"));
+    assert!(!should_exclude("src/main.rs"));
+    assert!(!should_exclude("notgit/file"));
   }
 }
