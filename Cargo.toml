@@ -14,6 +14,7 @@ base64 = "0.22.1"
 clap = { version = "4.6.1", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"] }
 shell-quote = "0.7.2"
+tempfile = "3.27.0"
 toml = "1.1.2"
 rcargo-protocol = { path = "crates/rcargo-protocol" }
 base64 = "0.22.1"

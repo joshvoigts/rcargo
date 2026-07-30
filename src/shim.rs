@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::time::UNIX_EPOCH;
+use tempfile::NamedTempFile;
 
 const SHIM_DIR: &str = ".rcargo";
 const SHIM_NAME: &str = "shim";
@@ -226,22 +227,18 @@ pub fn ensure_shim(
   // Write binary to a local temp file, then scp it
   // to the remote host. This avoids ARG_MAX issues
   // with piping base64 through echo.
-  let tmp_path = std::env::temp_dir()
-    .join(format!("rcargo-shim-{}.bin", std::process::id()));
-  std::fs::write(&tmp_path, &binary)?;
+  let tmp = NamedTempFile::new()?;
+  std::fs::write(tmp.path(), &binary)?;
 
   let scp_status = Command::new("scp")
     .args([
       "-q",
       "-o",
       "BatchMode=yes",
-      tmp_path.to_str().unwrap(),
+      tmp.path().to_str().unwrap(),
       &format!("{host}:{shim_path}"),
     ])
     .status();
-
-  // Always clean up the temp file.
-  std::fs::remove_file(&tmp_path).ok();
 
   let scp_status =
     scp_status.map_err(|e| format!("failed to run scp: {e}"))?;

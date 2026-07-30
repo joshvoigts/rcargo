@@ -101,5 +101,4 @@ rcargo test -- --skip foo  # Pass extra args to cargo test
 ### Flags
 
 - `--target, -t` — Override the target host from config
-- `--branch, -b` — Override the branch (defaults to current branch)
 - `--debug` — Enable debug output for any command

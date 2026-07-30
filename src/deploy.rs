@@ -4,6 +4,7 @@ use crate::server;
 use crate::ssh;
 use std::error::Error;
 use std::process::Command;
+use tempfile::NamedTempFile;
 
 fn service_name(package_name: &str) -> String {
   format!("{package_name}.service")
@@ -94,19 +95,17 @@ pub fn deploy(
 
   // Write the service file via scp to avoid heredoc
   // delimiter collision issues with ssh piping.
-  let tmp = std::env::temp_dir()
-    .join(format!("rcargo-svc-{}.conf", std::process::id()));
-  std::fs::write(&tmp, &service_content)?;
+  let tmp = NamedTempFile::new()?;
+  std::fs::write(tmp.path(), &service_content)?;
   let scp_status = Command::new("scp")
     .args([
       "-q",
       "-o",
       "BatchMode=yes",
-      tmp.to_str().unwrap(),
+      tmp.path().to_str().unwrap(),
       &format!("{host}:{service_path}"),
     ])
     .status();
-  std::fs::remove_file(&tmp).ok();
   let status =
     scp_status.map_err(|e| format!("failed to run scp: {e}"))?;
   if !status.success() {

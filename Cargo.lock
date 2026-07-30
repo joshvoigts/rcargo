@@ -417,6 +417,7 @@ dependencies = [
  "serde",
  "sha2",
  "shell-quote",
+ "tempfile",
  "toml",
 ]
 
