@@ -11,6 +11,8 @@ base64 = "0.22.1"
 fast_rsync = "0.2.0"
 rcargo-protocol = { path = "../rcargo-protocol" }
 sha2 = "0.10.9"
+tokio = { version = "1.44.2", features = ["net", "io-util", "rt-multi-thread", "macros"] }
+url = "2.5.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4.5"

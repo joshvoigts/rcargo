@@ -20,9 +20,12 @@ remote_path = "/optional/path"  # Defaults to $HOME/build/{project_name}
 
 ### Sandbox
 
-Remote builds run inside a [nono](https://github.com/nolabs-ai/nono) sandbox by default. nono uses Landlock (Linux) / Seatbelt (macOS) for kernel-level filesystem sandboxing — deny-all reads, then whitelist specific paths. Binary execution works because the filesystem is intact; the kernel just denies access to non-whitelisted paths.
+Remote builds run inside a sandbox by default. The sandbox provides:
 
-Network is proxied with a domain allowlist. The default allowed domains are:
+- **Filesystem sandboxing**: Landlock (Linux) / Seatbelt (macOS) restricts access to whitelisted paths only.
+- **Network sandboxing**: A local HTTP proxy enforces domain allowlisting, with kernel-level enforcement to prevent direct external connections.
+
+The default allowed network domains are:
 
 - `crates.io`
 - `index.crates.io`

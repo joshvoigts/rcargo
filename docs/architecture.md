@@ -49,8 +49,15 @@ domains) via the SANDBOX protocol message.
 
 ### Build and Test (`rcargo build`, `rcargo test`)
 
-These run inside the sandbox. The shim applies Landlock (Linux) or
-Seatbelt (macOS) restrictions before executing cargo.
+These run inside the sandbox. The shim applies:
+
+1. **Filesystem sandboxing**: Landlock (Linux) or Seatbelt (macOS)
+   restricts access to whitelisted paths only.
+
+2. **Network sandboxing**: A local HTTP proxy enforces domain
+   allowlisting. The kernel sandbox (Landlock ABI V4 / Seatbelt)
+   restricts TCP access to only the proxy port, preventing direct
+   external TCP connections. UDP (including DNS) is unrestricted.
 
 ### Check and Clippy (`rcargo check`, `rcargo clippy`)
 

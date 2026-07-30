@@ -1,3 +1,4 @@
+mod proxy;
 mod sandbox;
 mod sync;
 
@@ -120,16 +121,53 @@ fn shim_loop() -> Result<(), Box<dyn std::error::Error>> {
         writer.send(&Message::Ok)?;
       }
       Message::Run { command } => {
+        // Start network proxy if network domains are specified.
+        // The runtime is kept alive until process exit so the
+        // proxy continues accepting connections.
+        let mut _rt = None;
+        let proxy_port = if !sandbox_config.net.is_empty() {
+          let rt = tokio::runtime::Runtime::new()?;
+          let proxy = rt.block_on(async {
+            proxy::NetworkProxy::start(sandbox_config.net.clone())
+              .await
+          })?;
+          let port = proxy.port();
+          rt.spawn(async move {
+            if let Err(e) = proxy.run().await {
+              eprintln!("[proxy] error: {e}");
+            }
+          });
+          _rt = Some(rt);
+          Some(port)
+        } else {
+          None
+        };
+
         if sandbox_config.enabled {
-          sandbox::apply_sandbox(&sandbox_config)?;
+          sandbox::apply_sandbox(&sandbox_config, proxy_port)?;
         }
 
         drop(reader);
         drop(writer);
 
-        let status = Command::new("bash")
-          .args(["--norc", "--noprofile", "-c", &command])
-          .status();
+        let mut cmd = Command::new("bash");
+        cmd.args(["--norc", "--noprofile", "-c", &command]);
+
+        // Set proxy environment variables if proxy is running
+        if let Some(port) = proxy_port {
+          let proxy_url = format!("http://127.0.0.1:{port}");
+          cmd.env("HTTP_PROXY", &proxy_url);
+          cmd.env("HTTPS_PROXY", &proxy_url);
+          cmd.env("ALL_PROXY", &proxy_url);
+          cmd.env("http_proxy", &proxy_url);
+          cmd.env("https_proxy", &proxy_url);
+          cmd.env("all_proxy", &proxy_url);
+          // No proxy for localhost
+          cmd.env("NO_PROXY", "localhost,127.0.0.1,::1");
+          cmd.env("no_proxy", "localhost,127.0.0.1,::1");
+        }
+
+        let status = cmd.status();
 
         let code = match status {
           Ok(s) => s.code().unwrap_or(1),
