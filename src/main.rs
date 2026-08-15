@@ -14,18 +14,7 @@ use std::error::Error;
 fn main() -> Result<(), Box<dyn Error>> {
   let app = App::parse();
 
-  let mut cfg = match Config::load() {
-    Ok(c) => c,
-    Err(_) => Config {
-      target: String::new(),
-      remote_path: None,
-      package: None,
-      bin: None,
-      sandbox: Default::default(),
-      hooks: Default::default(),
-      commands: Default::default(),
-    },
-  };
+  let mut cfg = Config::load()?;
 
   if let Some(target) = app.target {
     cfg.target = target;

@@ -8,6 +8,7 @@ use xdg::BaseDirectories;
 #[derive(Debug, Deserialize, Default)]
 pub struct Config {
   /// The target host to deploy to (anything you'd pass to `ssh`)
+  #[serde(default)]
   pub target: String,
 
   /// Remote path for the repo. Defaults to `$HOME/build/{project_name}`
@@ -97,21 +98,20 @@ pub struct SandboxAllow {
 
 impl Config {
   /// Load the effective config: global (XDG) provides defaults, then the
-  /// project `rcargo.toml` overrides it with replace semantics.
+  /// project `rcargo.toml` overrides it with replace semantics. If no
+  /// config file exists at all, returns an empty config so CLI flags
+  /// (e.g. `--target`) can still be used alone.
   pub fn load() -> Result<Self, Box<dyn Error>> {
-    let mut found = false;
     let mut value = toml::Value::Table(toml::map::Map::new());
 
     if let Some(path) = global_config_path() {
       if path.exists() {
-        found = true;
         value = toml::from_str(&fs::read_to_string(&path)?)?;
       }
     }
 
     if let Some(path) = project_config_path() {
       if path.exists() {
-        found = true;
         let project: toml::Value =
           toml::from_str(&fs::read_to_string(&path)?)?;
         overlay(
@@ -119,13 +119,6 @@ impl Config {
           project.as_table().unwrap(),
         );
       }
-    }
-
-    if !found {
-      return Err(
-        "No config file found. Create rcargo.toml with:\ntarget = \"<ssh_target>\""
-          .into(),
-      );
     }
 
     let config: Config = value.try_into()?;
@@ -141,10 +134,14 @@ impl Config {
 }
 
 /// Global config at `$XDG_CONFIG_HOME/rcargo/rcargo.toml` (default
-/// `~/.config/rcargo/rcargo.toml`).
+/// `~/.config/rcargo/rcargo.toml`). Uses `get_config_home` (not
+/// `get_config_file`) so no directory is created as a side effect.
 fn global_config_path() -> Option<PathBuf> {
-  BaseDirectories::with_prefix("rcargo")
-    .get_config_file("rcargo.toml")
+  Some(
+    BaseDirectories::with_prefix("rcargo")
+      .get_config_home()?
+      .join("rcargo.toml"),
+  )
 }
 
 /// Project config in the current directory. `rcargo.toml` is canonical;

@@ -101,6 +101,14 @@ Run a command by name:
 rcargo ci
 ```
 
+Global flags (like `--debug`) must come **before** the command name:
+
+```
+rcargo --debug ci
+```
+
+Command names must not collide with the built-in subcommands (`build`, `check`, `clippy`, `lint`, `run`, `stop`, `test`, `deploy`, `undeploy`, `status`) — those are dispatched to the built-in behavior, not to `[commands]`. A misspelled command (e.g. `rcargo buid`) also reports `no command 'buid' defined in [commands]`.
+
 ## Usage
 
 Before any command runs, rcargo verifies SSH connectivity to the remote host.
