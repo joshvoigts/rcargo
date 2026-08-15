@@ -92,16 +92,30 @@ fn sandbox_cmd(
   cmd
 }
 
+/// Quote and join extra args into a single shell-safe string, prefixed
+/// with a space (or empty when there are none).
+fn quoted_args(args: &[String]) -> String {
+  if args.is_empty() {
+    String::new()
+  } else {
+    let quoted: Vec<String> =
+      args.iter().map(|a| shell_quote(a)).collect();
+    format!(" {}", quoted.join(" "))
+  }
+}
+
 /// Build a remote cargo build command, sandboxed with nono.
 pub fn build_cmd(
   config: &Config,
   remote_path: &str,
   home: &str,
+  extra_args: &[String],
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo build --release",
-    shell_quote(remote_path)
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo build --release{}",
+    shell_quote(remote_path),
+    quoted_args(extra_args)
   );
   sandbox_cmd(config, remote_path, home, debug, &inner)
 }
@@ -114,17 +128,10 @@ pub fn test_cmd(
   extra_args: &[String],
   debug: bool,
 ) -> String {
-  let args_str = if extra_args.is_empty() {
-    String::new()
-  } else {
-    let quoted: Vec<String> =
-      extra_args.iter().map(|a| shell_quote(a)).collect();
-    format!(" {}", quoted.join(" "))
-  };
-
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo test{args_str}",
-    shell_quote(remote_path)
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo test{}",
+    shell_quote(remote_path),
+    quoted_args(extra_args)
   );
   sandbox_cmd(config, remote_path, home, debug, &inner)
 }
@@ -134,11 +141,13 @@ pub fn check_cmd(
   config: &Config,
   remote_path: &str,
   home: &str,
+  extra_args: &[String],
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo check --workspace",
-    shell_quote(remote_path)
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo check --workspace{}",
+    shell_quote(remote_path),
+    quoted_args(extra_args)
   );
   sandbox_cmd(config, remote_path, home, debug, &inner)
 }
@@ -148,11 +157,13 @@ pub fn clippy_cmd(
   config: &Config,
   remote_path: &str,
   home: &str,
+  extra_args: &[String],
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo clippy --workspace -- -D warnings",
-    shell_quote(remote_path)
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo clippy --workspace -- -D warnings{}",
+    shell_quote(remote_path),
+    quoted_args(extra_args)
   );
   sandbox_cmd(config, remote_path, home, debug, &inner)
 }
@@ -163,11 +174,13 @@ pub fn lint_cmd(
   config: &Config,
   remote_path: &str,
   home: &str,
+  extra_args: &[String],
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo lint",
-    shell_quote(remote_path)
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo lint{}",
+    shell_quote(remote_path),
+    quoted_args(extra_args)
   );
   sandbox_cmd(config, remote_path, home, debug, &inner)
 }

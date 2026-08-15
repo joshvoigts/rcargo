@@ -8,7 +8,7 @@ mod ssh;
 
 use crate::config::Config;
 use clap::Parser;
-use cli::{App, Command};
+use cli::{App, Command, Step, StepName};
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -80,18 +80,48 @@ fn main() -> Result<(), Box<dyn Error>> {
     None => git::current_branch()?,
   };
 
+  let timeout = std::time::Duration::from_secs(app.timeout);
+
   match app.cmd {
     Command::Build => {
-      build_remote(&cfg, &remote_path, &home, app.debug)?;
+      run_steps(
+        &cfg,
+        &remote_path,
+        &home,
+        &one_step(StepName::Build),
+        app.debug,
+        timeout,
+      )?;
     }
     Command::Check => {
-      check_remote(&cfg, &remote_path, &home, app.debug)?;
+      run_steps(
+        &cfg,
+        &remote_path,
+        &home,
+        &one_step(StepName::Check),
+        app.debug,
+        timeout,
+      )?;
     }
     Command::Clippy => {
-      clippy_remote(&cfg, &remote_path, &home, app.debug)?;
+      run_steps(
+        &cfg,
+        &remote_path,
+        &home,
+        &one_step(StepName::Clippy),
+        app.debug,
+        timeout,
+      )?;
     }
     Command::Lint => {
-      lint_remote(&cfg, &remote_path, &home, app.debug)?;
+      run_steps(
+        &cfg,
+        &remote_path,
+        &home,
+        &one_step(StepName::Lint),
+        app.debug,
+        timeout,
+      )?;
     }
     Command::Run => {
       server::run_server(
@@ -123,14 +153,27 @@ fn main() -> Result<(), Box<dyn Error>> {
       server::status_server(&cfg.target, &remote_path, &bin_name)?;
     }
     Command::Test { args } => {
-      test_remote(
+      run_steps(
         &cfg,
         &remote_path,
         &home,
-        &branch,
-        &args,
+        &[Step {
+          name: StepName::Test,
+          args,
+        }],
         app.debug,
-        std::time::Duration::from_secs(app.timeout),
+        timeout,
+      )?;
+    }
+    Command::Steps { raw } => {
+      let steps = cli::parse_steps(&raw).map_err(|e| e.into())?;
+      run_steps(
+        &cfg,
+        &remote_path,
+        &home,
+        &steps,
+        app.debug,
+        timeout,
       )?;
     }
   }
@@ -210,84 +253,20 @@ fn resolve_bin_name(
   }
 }
 
-fn check_remote(
-  config: &Config,
-  remote_path: &str,
-  home: &str,
-  debug: bool,
-) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(&config.target, remote_path)?;
-
-  server::run_hooks(config, remote_path, debug)?;
-
-  println!("Checking on remote...");
-  let cmd = sandbox::check_cmd(config, remote_path, home, debug);
-  ssh::ssh_run(&config.target, &cmd)?;
-
-  println!("Check complete!");
-  Ok(())
+fn one_step(name: StepName) -> Vec<Step> {
+  vec![Step {
+    name,
+    args: Vec::new(),
+  }]
 }
 
-fn clippy_remote(
+/// Sync and run hooks once, then execute each step in order,
+/// short-circuiting on the first failure.
+fn run_steps(
   config: &Config,
   remote_path: &str,
   home: &str,
-  debug: bool,
-) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(&config.target, remote_path)?;
-
-  server::run_hooks(config, remote_path, debug)?;
-
-  println!("Running clippy on remote...");
-  let cmd = sandbox::clippy_cmd(config, remote_path, home, debug);
-  ssh::ssh_run(&config.target, &cmd)?;
-
-  println!("Clippy complete!");
-  Ok(())
-}
-
-fn lint_remote(
-  config: &Config,
-  remote_path: &str,
-  home: &str,
-  debug: bool,
-) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(&config.target, remote_path)?;
-
-  server::run_hooks(config, remote_path, debug)?;
-
-  println!("Running lint on remote...");
-  let cmd = sandbox::lint_cmd(config, remote_path, home, debug);
-  ssh::ssh_run(&config.target, &cmd)?;
-
-  println!("Lint complete!");
-  Ok(())
-}
-
-fn build_remote(
-  config: &Config,
-  remote_path: &str,
-  home: &str,
-  debug: bool,
-) -> Result<(), Box<dyn Error>> {
-  git::sync_repo(&config.target, remote_path)?;
-
-  server::run_hooks(config, remote_path, debug)?;
-
-  println!("Building on remote...");
-  let cmd = sandbox::build_cmd(config, remote_path, home, debug);
-  ssh::ssh_run(&config.target, &cmd)?;
-
-  println!("Build complete!");
-  Ok(())
-}
-
-fn test_remote(
-  config: &Config,
-  remote_path: &str,
-  home: &str,
-  _branch: &str,
-  extra_args: &[String],
+  steps: &[Step],
   debug: bool,
   timeout: std::time::Duration,
 ) -> Result<(), Box<dyn Error>> {
@@ -295,11 +274,42 @@ fn test_remote(
 
   server::run_hooks(config, remote_path, debug)?;
 
-  println!("Running tests on remote...");
-  let cmd =
-    sandbox::test_cmd(config, remote_path, home, extra_args, debug);
-  ssh::ssh_run_with_timeout(&config.target, &cmd, timeout)?;
-
-  println!("Tests complete!");
+  for step in steps {
+    let label = step.name.as_str();
+    println!("Running {label} on remote...");
+    let cmd = step_command(config, remote_path, home, step, debug);
+    ssh::ssh_run_with_timeout(&config.target, &cmd, timeout)?;
+    println!("{label} complete!");
+  }
   Ok(())
+}
+
+fn step_command(
+  config: &Config,
+  remote_path: &str,
+  home: &str,
+  step: &Step,
+  debug: bool,
+) -> String {
+  match step.name {
+    StepName::Lint => {
+      sandbox::lint_cmd(config, remote_path, home, &step.args, debug)
+    }
+    StepName::Clippy => sandbox::clippy_cmd(
+      config,
+      remote_path,
+      home,
+      &step.args,
+      debug,
+    ),
+    StepName::Check => {
+      sandbox::check_cmd(config, remote_path, home, &step.args, debug)
+    }
+    StepName::Test => {
+      sandbox::test_cmd(config, remote_path, home, &step.args, debug)
+    }
+    StepName::Build => {
+      sandbox::build_cmd(config, remote_path, home, &step.args, debug)
+    }
+  }
 }
