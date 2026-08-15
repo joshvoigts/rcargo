@@ -54,7 +54,11 @@ pub enum Command {
   /// Run clippy on remote (cargo clippy)
   Clippy,
   /// Run lint on remote (cargo lint, provided by a lint xtask)
-  Lint,
+  Lint {
+    /// Fall back to `cargo clippy --workspace` if the lint xtask is not installed
+    #[arg(long, short)]
+    fallback_clippy: bool,
+  },
   /// Build and run on remote
   Run,
   /// Stop the running process on remote

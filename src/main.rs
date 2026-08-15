@@ -90,8 +90,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     Command::Clippy => {
       clippy_remote(&cfg, &remote_path, &home, app.debug)?;
     }
-    Command::Lint => {
-      lint_remote(&cfg, &remote_path, &home, app.debug)?;
+    Command::Lint { fallback_clippy } => {
+      lint_remote(
+        &cfg,
+        &remote_path,
+        &home,
+        app.debug,
+        fallback_clippy,
+      )?;
     }
     Command::Run => {
       server::run_server(
@@ -251,6 +257,7 @@ fn lint_remote(
   remote_path: &str,
   home: &str,
   debug: bool,
+  fallback_clippy: bool,
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
 
@@ -258,7 +265,18 @@ fn lint_remote(
 
   println!("Running lint on remote...");
   let cmd = sandbox::lint_cmd(config, remote_path, home, debug);
-  ssh::ssh_run(&config.target, &cmd)?;
+  if let Err(err) = ssh::ssh_run(&config.target, &cmd) {
+    if fallback_clippy
+      && err.to_string().contains("no such subcommand")
+    {
+      println!("cargo lint not available; falling back to clippy");
+      return ssh::ssh_run(
+        &config.target,
+        &sandbox::clippy_cmd(config, remote_path, home, debug),
+      );
+    }
+    return Err(err);
+  }
 
   println!("Lint complete!");
   Ok(())
