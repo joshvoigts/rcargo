@@ -55,7 +55,7 @@ pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
       .join("\n");
     return Err(
       format!(
-        "Remote command failed with exit code: {}\n{}",
+        "Remote command failed on {host} with exit code: {}\n{}",
         status.code().unwrap_or(-1),
         err.trim(),
       )
@@ -135,7 +135,7 @@ pub fn ssh_run_with_timeout(
       .join("\n");
     return Err(
       format!(
-        "Remote command failed with exit code: {}\n{}",
+        "Remote command failed on {host} with exit code: {}\n{}",
         status.code().unwrap_or(-1),
         err.trim(),
       )
@@ -264,14 +264,14 @@ pub fn ssh_capture(
     let err = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut msg = format!(
-      "Remote command failed with exit code: {}",
+      "Remote command failed on {host} with exit code: {}",
       status.code().unwrap_or(-1)
     );
     if !err.is_empty() {
-      msg.push_str(&format!("\nstderr: {err}"));
+      msg.push_str(&format!("\n{err}"));
     }
     if !stdout.is_empty() {
-      msg.push_str(&format!("\nstdout: {stdout}"));
+      msg.push_str(&format!("\n{stdout}"));
     }
     return Err(msg.into());
   }

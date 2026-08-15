@@ -10,8 +10,19 @@ use crate::config::Config;
 use clap::Parser;
 use cli::{App, Command, Step, StepName};
 use std::error::Error;
+use std::process::ExitCode;
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> ExitCode {
+  match run() {
+    Ok(()) => ExitCode::SUCCESS,
+    Err(e) => {
+      eprintln!("{}", e);
+      ExitCode::FAILURE
+    }
+  }
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
   let app = App::parse();
 
   let mut cfg = Config::load()?;
