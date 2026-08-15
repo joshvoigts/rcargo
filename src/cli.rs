@@ -45,6 +45,7 @@ pub struct App {
 }
 
 #[derive(Subcommand)]
+#[command(rename_all = "kebab-case")]
 pub enum Command {
   /// Build on remote
   Build,
@@ -52,6 +53,8 @@ pub enum Command {
   Check,
   /// Run clippy on remote (cargo clippy)
   Clippy,
+  /// Run lint on remote (cargo lint, provided by a lint xtask)
+  Lint,
   /// Build and run on remote
   Run,
   /// Stop the running process on remote

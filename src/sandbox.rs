@@ -111,6 +111,14 @@ pub fn clippy_cmd(remote_path: &str) -> String {
   )
 }
 
+/// Build a remote cargo lint command (provided by a lint xtask).
+pub fn lint_cmd(remote_path: &str) -> String {
+  format!(
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo lint",
+    shell_quote(remote_path)
+  )
+}
+
 /// Build a remote cargo build command, sandboxed with nono.
 ///
 /// `home` is the resolved `$HOME` on the remote host.

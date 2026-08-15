@@ -90,6 +90,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     Command::Clippy => {
       clippy_remote(&cfg, &remote_path, app.debug)?;
     }
+    Command::Lint => {
+      lint_remote(&cfg, &remote_path, app.debug)?;
+    }
     Command::Run => {
       server::run_server(
         &cfg,
@@ -238,6 +241,23 @@ fn clippy_remote(
   ssh::ssh_run(&config.target, &cmd)?;
 
   println!("Clippy complete!");
+  Ok(())
+}
+
+fn lint_remote(
+  config: &Config,
+  remote_path: &str,
+  debug: bool,
+) -> Result<(), Box<dyn Error>> {
+  git::sync_repo(&config.target, remote_path)?;
+
+  server::run_hooks(config, remote_path, debug)?;
+
+  println!("Running lint on remote...");
+  let cmd = sandbox::lint_cmd(remote_path);
+  ssh::ssh_run(&config.target, &cmd)?;
+
+  println!("Lint complete!");
   Ok(())
 }
 

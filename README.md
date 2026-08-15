@@ -85,6 +85,8 @@ Code is synced to the remote via `rsync`, which excludes `.git` and respects `.g
 ```
 rcargo build          # Build on remote (sandboxed)
 rcargo check          # Check code on remote (cargo check, no sandbox)
+rcargo clippy         # Run clippy on remote (cargo clippy)
+rcargo lint           # Run lint on remote (cargo lint, via lint xtask)
 rcargo run            # Stop existing process, build, and launch on remote
 rcargo stop           # Stop the running process on remote
 rcargo test           # Run tests on remote (sandboxed)
