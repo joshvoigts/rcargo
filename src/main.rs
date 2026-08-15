@@ -85,13 +85,13 @@ fn main() -> Result<(), Box<dyn Error>> {
       build_remote(&cfg, &remote_path, &home, app.debug)?;
     }
     Command::Check => {
-      check_remote(&cfg, &remote_path, app.debug)?;
+      check_remote(&cfg, &remote_path, &home, app.debug)?;
     }
     Command::Clippy => {
-      clippy_remote(&cfg, &remote_path, app.debug)?;
+      clippy_remote(&cfg, &remote_path, &home, app.debug)?;
     }
     Command::Lint => {
-      lint_remote(&cfg, &remote_path, app.debug)?;
+      lint_remote(&cfg, &remote_path, &home, app.debug)?;
     }
     Command::Run => {
       server::run_server(
@@ -213,6 +213,7 @@ fn resolve_bin_name(
 fn check_remote(
   config: &Config,
   remote_path: &str,
+  home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
@@ -220,7 +221,7 @@ fn check_remote(
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Checking on remote...");
-  let cmd = sandbox::check_cmd(remote_path);
+  let cmd = sandbox::check_cmd(config, remote_path, home, debug);
   ssh::ssh_run(&config.target, &cmd)?;
 
   println!("Check complete!");
@@ -230,6 +231,7 @@ fn check_remote(
 fn clippy_remote(
   config: &Config,
   remote_path: &str,
+  home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
@@ -237,7 +239,7 @@ fn clippy_remote(
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Running clippy on remote...");
-  let cmd = sandbox::clippy_cmd(remote_path);
+  let cmd = sandbox::clippy_cmd(config, remote_path, home, debug);
   ssh::ssh_run(&config.target, &cmd)?;
 
   println!("Clippy complete!");
@@ -247,6 +249,7 @@ fn clippy_remote(
 fn lint_remote(
   config: &Config,
   remote_path: &str,
+  home: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
@@ -254,7 +257,7 @@ fn lint_remote(
   server::run_hooks(config, remote_path, debug)?;
 
   println!("Running lint on remote...");
-  let cmd = sandbox::lint_cmd(remote_path);
+  let cmd = sandbox::lint_cmd(config, remote_path, home, debug);
   ssh::ssh_run(&config.target, &cmd)?;
 
   println!("Lint complete!");

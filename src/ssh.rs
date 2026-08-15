@@ -198,9 +198,8 @@ fn filter_sgr(
   let mut byte = [0u8; 1];
 
   loop {
-    match reader.read(&mut byte)? {
-      0 => break,
-      _ => {}
+    if reader.read(&mut byte)? == 0 {
+      break;
     }
     let b = byte[0];
 
