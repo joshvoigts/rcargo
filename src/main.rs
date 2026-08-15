@@ -23,6 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
       bin: None,
       sandbox: Default::default(),
       hooks: Default::default(),
+      commands: Default::default(),
     },
   };
 
@@ -32,7 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   if cfg.target.is_empty() {
     return Err(
-      "No target specified. Provide --target flag or create deploy.toml with: target = \"<ssh_target>\""
+      "No target specified. Provide --target flag or create rcargo.toml with: target = \"<ssh_target>\""
         .into(),
     );
   }
@@ -165,8 +166,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         timeout,
       )?;
     }
-    Command::Steps { raw } => {
-      let steps = cli::parse_steps(&raw).map_err(|e| e.into())?;
+    Command::Custom(external) => {
+      let name = external
+        .first()
+        .ok_or_else(|| "missing command name".to_string())?;
+      if external.len() > 1 {
+        return Err(
+          format!("unexpected arguments for command '{name}'").into(),
+        );
+      }
+      let steps = cfg
+        .commands
+        .get(name)
+        .ok_or_else(|| {
+          format!("no command '{name}' defined in [commands]")
+        })?
+        .iter()
+        .map(|s| cli::parse_step(s))
+        .collect::<Result<Vec<Step>, _>>()
+        .map_err(|e: String| -> Box<dyn Error> { e.into() })?;
       run_steps(
         &cfg,
         &remote_path,

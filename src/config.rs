@@ -1,7 +1,9 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use xdg::BaseDirectories;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Config {
@@ -27,6 +29,11 @@ pub struct Config {
   /// Shell hooks that run on the remote host outside the sandbox.
   #[serde(default)]
   pub hooks: Hooks,
+
+  /// User-defined commands. Maps a command name to an ordered list of
+  /// steps, each a `"<cmd> [args...]"` string. e.g. `ci = ["lint", "test --workspace -q"]`
+  #[serde(default)]
+  pub commands: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -89,21 +96,39 @@ pub struct SandboxAllow {
 }
 
 impl Config {
+  /// Load the effective config: global (XDG) provides defaults, then the
+  /// project `rcargo.toml` overrides it with replace semantics.
   pub fn load() -> Result<Self, Box<dyn Error>> {
-    let candidates = ["deploy.toml", "rcargo.toml"];
-    let config_path =
-      candidates.iter().map(Path::new).find(|p| p.exists());
-    let config_path = match config_path {
-      Some(p) => p,
-      None => {
-        return Err(
-          "No config file found. Create deploy.toml with:\ntarget = \"<ssh_target>\""
-            .into(),
+    let mut found = false;
+    let mut value = toml::Value::Table(toml::map::Map::new());
+
+    if let Some(path) = global_config_path() {
+      if path.exists() {
+        found = true;
+        value = toml::from_str(&fs::read_to_string(&path)?)?;
+      }
+    }
+
+    if let Some(path) = project_config_path() {
+      if path.exists() {
+        found = true;
+        let project: toml::Value =
+          toml::from_str(&fs::read_to_string(&path)?)?;
+        overlay(
+          value.as_table_mut().unwrap(),
+          project.as_table().unwrap(),
         );
       }
-    };
-    let content = fs::read_to_string(config_path)?;
-    let config: Config = toml::from_str(&content)?;
+    }
+
+    if !found {
+      return Err(
+        "No config file found. Create rcargo.toml with:\ntarget = \"<ssh_target>\""
+          .into(),
+      );
+    }
+
+    let config: Config = value.try_into()?;
     Ok(config)
   }
 
@@ -112,5 +137,33 @@ impl Config {
       .remote_path
       .clone()
       .unwrap_or_else(|| format!("$HOME/build/{project_name}"))
+  }
+}
+
+/// Global config at `$XDG_CONFIG_HOME/rcargo/rcargo.toml` (default
+/// `~/.config/rcargo/rcargo.toml`).
+fn global_config_path() -> Option<PathBuf> {
+  BaseDirectories::with_prefix("rcargo")
+    .get_config_file("rcargo.toml")
+}
+
+/// Project config in the current directory. `rcargo.toml` is canonical;
+/// `deploy.toml` is still accepted for backwards compatibility.
+fn project_config_path() -> Option<PathBuf> {
+  ["rcargo.toml", "deploy.toml"]
+    .iter()
+    .map(Path::new)
+    .find(|p| p.exists())
+    .map(|p| p.to_path_buf())
+}
+
+/// Per-key replace: every key the project defines replaces the corresponding
+/// global value wholesale, including entire sub-tables (no merging).
+fn overlay(
+  base: &mut toml::map::Map<String, toml::Value>,
+  overlay: &toml::map::Map<String, toml::Value>,
+) {
+  for (key, value) in overlay {
+    base.insert(key.clone(), value.clone());
   }
 }

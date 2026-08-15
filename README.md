@@ -10,7 +10,14 @@ Run cargo on a remote host and stream output back locally.
 
 ## Setup
 
-Create a `deploy.toml` (or `rcargo.toml`) in your project root:
+Configuration lives in TOML files layered in two places:
+
+- **Project** — `rcargo.toml` in the repo root (`deploy.toml` is still accepted for backwards compatibility)
+- **Global** — `$XDG_CONFIG_HOME/rcargo/rcargo.toml` (default `~/.config/rcargo/rcargo.toml`), providing defaults shared across all projects on this machine
+
+Project values **replace** global ones: whichever key the project defines wins, including entire sub-tables (no merging). Leave a key out of the project and the global value is used.
+
+Minimal project config:
 
 ```toml
 target = "your-server"
@@ -76,6 +83,24 @@ prebuild = [
 
 Hooks inherit the environment variables from `[sandbox.env]`.
 
+### Commands
+
+Define named command sequences that run as a single remote session (one sync, one hooks run, stopped on the first failure). A command maps a name to an ordered list of steps; each step is a built-in command optionally followed by its args.
+
+```toml
+[commands]
+ci    = ["lint", "test --workspace -q"]
+check = ["clippy", "test"]
+```
+
+Available step commands: `lint`, `clippy`, `check`, `test`, `build`.
+
+Run a command by name:
+
+```
+rcargo ci
+```
+
 ## Usage
 
 Before any command runs, rcargo verifies SSH connectivity to the remote host.
@@ -89,12 +114,16 @@ rcargo clippy         # Run clippy on remote (cargo clippy, sandboxed)
 rcargo lint           # Run lint on remote (cargo lint, via lint xtask, sandboxed)
 rcargo run            # Stop existing process, build, and launch on remote
 rcargo stop           # Stop the running process on remote
-rcargo test           # Run tests on remote (sandboxed)
-rcargo test -- --skip foo  # Pass extra args to cargo test
+rcargo test                  # Run tests on remote (sandboxed)
+rcargo test -- --skip foo    # Pass extra args to cargo test
+rcargo <command>             # Run a user-defined command from [commands] (e.g. `rcargo ci`)
 ```
 
 ### Flags
 
 - `--target, -t` — Override the target host from config
 - `--branch, -b` — Override the branch (defaults to current branch)
+- `--package, -p` — Workspace member to install (overrides config)
+- `--bin` — Binary name override (defaults to auto-detect from [[bin]] target)
+- `--timeout` — Timeout in seconds for remote commands (default: 600)
 - `--debug` — Enable debug output for any command

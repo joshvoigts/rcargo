@@ -4,8 +4,9 @@ use clap::{Parser, Subcommand};
 #[command(
   name = "rcargo",
   about = "Deploy or build rust projects on remote servers",
+  allow_external_subcommands = true,
   long_about = "A tool for deploying or building rust projects on remote servers.\n\n\
-    Configuration via deploy.toml:\n  \
+    Configuration via rcargo.toml:\n  \
     target = \"myhost\"      # SSH target (hostname, user@host, or ~/.ssh/config alias)\n  \
     remote_path = \"...\"     # Optional remote path (defaults to $HOME/build/{project_name})\n  \
     [sandbox]\n  \
@@ -19,7 +20,7 @@ pub struct App {
   #[command(subcommand)]
   pub cmd: Command,
 
-  /// Override the target from deploy.toml
+  /// Override the target from rcargo.toml
   #[arg(long, short)]
   pub target: Option<String>,
 
@@ -27,7 +28,7 @@ pub struct App {
   #[arg(long, short)]
   pub branch: Option<String>,
 
-  /// Workspace member to install (overrides deploy.toml)
+  /// Workspace member to install (overrides rcargo.toml)
   #[arg(long, short)]
   pub package: Option<String>,
 
@@ -65,15 +66,9 @@ pub enum Command {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     args: Vec<String>,
   },
-  /// Run multiple commands on the remote in a single session
-  Steps {
-    /// Commands and their args, in order: each known command name
-    /// (lint, clippy, check, test, build) starts a new step, and the
-    /// tokens after it (until the next command name) are its args.
-    /// e.g. `rcargo steps lint test --workspace -q`
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    raw: Vec<String>,
-  },
+  /// Run a user-defined command from `[commands]` in the config
+  #[command(external_subcommand)]
+  Custom(Vec<String>),
   /// Install binary and set up as systemd user service
   Deploy,
   /// Remove systemd service and installed binary
@@ -82,7 +77,7 @@ pub enum Command {
   Status,
 }
 
-/// A single command within a `steps` run.
+/// A single step within a `[commands]` entry.
 #[derive(Clone, Debug)]
 pub struct Step {
   pub name: StepName,
@@ -111,34 +106,16 @@ impl StepName {
   }
 }
 
-/// Parse raw step tokens into ordered `Step`s. A token that names a known
-/// command starts a new step; any other token becomes an arg of the current
-/// step. e.g. `["lint", "test", "--workspace", "-q"]` -> lint; test --workspace -q.
-pub fn parse_steps(raw: &[String]) -> Result<Vec<Step>, String> {
-  let mut steps: Vec<Step> = Vec::new();
-  let mut current: Option<Step> = None;
-  for tok in raw {
-    if let Some(name) = step_name(tok) {
-      if let Some(step) = current.take() {
-        steps.push(step);
-      }
-      current = Some(Step {
-        name,
-        args: Vec::new(),
-      });
-    } else if let Some(step) = current.as_mut() {
-      step.args.push(tok.clone());
-    } else {
-      return Err(format!("'{tok}' is not a known command"));
-    }
-  }
-  if let Some(step) = current.take() {
-    steps.push(step);
-  }
-  if steps.is_empty() {
-    return Err("no commands specified".into());
-  }
-  Ok(steps)
+/// Parse a single step string like `"test --workspace -q"` into a `Step`.
+pub fn parse_step(s: &str) -> Result<Step, String> {
+  let mut parts = s.split_whitespace();
+  let name = parts
+    .next()
+    .ok_or_else(|| "empty command in [commands]".to_string())?;
+  let name = step_name(name)
+    .ok_or_else(|| format!("'{name}' is not a known command"))?;
+  let args: Vec<String> = parts.map(|p| p.to_string()).collect();
+  Ok(Step { name, args })
 }
 
 fn step_name(s: &str) -> Option<StepName> {
