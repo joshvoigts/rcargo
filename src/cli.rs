@@ -8,7 +8,8 @@ use clap::{Parser, Subcommand};
   long_about = "A tool for deploying or building rust projects on remote servers.\n\n\
     Configuration via rcargo.toml:\n  \
     target = \"myhost\"      # SSH target (hostname, user@host, or ~/.ssh/config alias)\n  \
-    remote_path = \"...\"     # Optional remote path (defaults to $HOME/build/{project_name})\n  \
+    remote_path = \"...\"     # Optional remote path (overrides remote_build_dir; defaults to $HOME/build/{project_name})\n  \
+    remote_build_dir = \"...\" # Optional build dir; repo lands at {remote_build_dir}/{project_name}\n  \
     [sandbox]\n  \
     enabled = true           # Enable sandboxed remote builds (default: true)\n  \
     [sandbox.env]\n  \

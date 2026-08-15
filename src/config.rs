@@ -15,6 +15,12 @@ pub struct Config {
   #[serde(default)]
   pub remote_path: Option<String>,
 
+  /// Remote build directory. If set, the final repo path is
+  /// `{remote_build_dir}/{project_name}`. Has no effect when `remote_path`
+  /// is also set.
+  #[serde(default)]
+  pub remote_build_dir: Option<String>,
+
   /// Workspace member to install (e.g. "edwin-server")
   #[serde(default)]
   pub package: Option<String>,
@@ -126,10 +132,46 @@ impl Config {
   }
 
   pub fn remote_path(&self, project_name: &str) -> String {
-    self
-      .remote_path
-      .clone()
-      .unwrap_or_else(|| format!("$HOME/build/{project_name}"))
+    if let Some(path) = &self.remote_path {
+      path.clone()
+    } else if let Some(dir) = &self.remote_build_dir {
+      format!("{}/{}", dir.trim_end_matches('/'), project_name)
+    } else {
+      format!("$HOME/build/{project_name}")
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn parse(toml: &str) -> Config {
+    toml::from_str(toml).unwrap()
+  }
+
+  #[test]
+  fn remote_path_precedence() {
+    let cfg = parse("remote_path = \"/exact/path\"\nremote_build_dir = \"/base/dir\"");
+    assert_eq!(cfg.remote_path("myapp"), "/exact/path");
+  }
+
+  #[test]
+  fn remote_build_dir_joins_project() {
+    let cfg = parse("remote_build_dir = \"/home/james/build\"");
+    assert_eq!(cfg.remote_path("myapp"), "/home/james/build/myapp");
+  }
+
+  #[test]
+  fn remote_build_dir_trims_trailing_slash() {
+    let cfg = parse("remote_build_dir = \"/base/dir/\"");
+    assert_eq!(cfg.remote_path("myapp"), "/base/dir/myapp");
+  }
+
+  #[test]
+  fn remote_path_defaults_to_home() {
+    let cfg = parse("");
+    assert_eq!(cfg.remote_path("myapp"), "$HOME/build/myapp");
   }
 }
 

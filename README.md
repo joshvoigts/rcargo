@@ -21,10 +21,11 @@ Minimal project config:
 
 ```toml
 target = "your-server"
-remote_path = "/optional/path"  # Defaults to $HOME/build/{project_name}
+remote_path = "/optional/path"  # Full path, overrides everything below
+remote_build_dir = "/home/james/build"  # Or give a base dir; repo lands at {dir}/{project_name}
 ```
 
-`$HOME` in `remote_path` is resolved on the remote host.
+If neither is set, the repo lands at `$HOME/build/{project_name}`. `remote_build_dir` joins the project name onto the base dir (e.g. `remote_build_dir = "/home/james/build"` with package `myapp` → `/home/james/build/myapp`). `remote_path` takes precedence over `remote_build_dir` and lets you pin an exact path. `$HOME` in either is resolved on the remote host.
 
 ### Sandbox
 
