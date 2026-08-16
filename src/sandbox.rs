@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::ssh::shell_quote;
+use std::io::{self, IsTerminal};
 
 /// Wrap an inner remote command in a nono sandbox unless disabled.
 ///
@@ -79,7 +80,12 @@ fn sandbox_cmd(
     .iter()
     .map(|(k, v)| format!("export {k}={}", shell_quote(v)))
     .collect();
-  env_vars.push("export CARGO_TERM_COLOR=always".into());
+  let color = if io::stdout().is_terminal() {
+    "always"
+  } else {
+    "never"
+  };
+  env_vars.push(format!("export CARGO_TERM_COLOR={color}"));
   let env_prefix = env_vars.join(" && ");
   let full_cmd =
     format!("bash --norc --noprofile -c \"{env_prefix} && {inner}\"");

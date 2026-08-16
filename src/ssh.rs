@@ -1,6 +1,6 @@
 use shell_quote::Sh;
 use std::error::Error;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -10,18 +10,29 @@ pub fn shell_quote(s: &str) -> String {
   String::from_utf8(Sh::quote_vec(s)).unwrap()
 }
 
+/// Allocate a pseudo-terminal (`-t`) only when the local stdout is a
+/// terminal, so remote programs emit colors interactively but stay
+/// plain when rcargo is piped (e.g. invoked by a tool that captures).
+fn ssh_command() -> Command {
+  let mut cmd = Command::new("ssh");
+  if io::stdout().is_terminal() {
+    cmd.arg("-t");
+  }
+  cmd
+}
+
 /// Run a command on the remote via SSH, streaming output to the local terminal.
 ///
-/// Allocates a pseudo-terminal (`-t`) so remote programs can emit
-/// colors. Stderr from the PTY teardown ("Connection closed") is
-/// suppressed on success because it's cosmetic noise.
+/// Allocates a pseudo-terminal when stdout is a TTY so remote programs
+/// can emit colors. Stderr from the PTY teardown ("Connection closed")
+/// is suppressed on success because it's cosmetic noise.
 ///
 /// SGR (color/style) escape sequences are preserved; all other CSI
 /// sequences that leak through the PTY (DSR, DA, cursor movement, etc.)
 /// are discarded so they don't appear as garbage.
 pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
-  let mut child = Command::new("ssh")
-    .args(["-t", host, cmd])
+  let mut child = ssh_command()
+    .args([host, cmd])
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .spawn()?;
@@ -76,8 +87,8 @@ pub fn ssh_run_with_timeout(
   cmd: &str,
   timeout: Duration,
 ) -> Result<(), Box<dyn Error>> {
-  let mut child = Command::new("ssh")
-    .args(["-t", host, cmd])
+  let mut child = ssh_command()
+    .args([host, cmd])
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .spawn()?;
