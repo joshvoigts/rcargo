@@ -1,7 +1,8 @@
 use shell_quote::Sh;
+use std::error::Error;
 use std::io::{self, Read, Write};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
-use std::{error::Error, process::Command};
 
 /// Quote a string for safe use in POSIX shell commands.
 pub fn shell_quote(s: &str) -> String {
@@ -21,8 +22,8 @@ pub fn shell_quote(s: &str) -> String {
 pub fn ssh_run(host: &str, cmd: &str) -> Result<(), Box<dyn Error>> {
   let mut child = Command::new("ssh")
     .args(["-t", host, cmd])
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()?;
 
   let mut stdout = child.stdout.take().unwrap();
@@ -77,8 +78,8 @@ pub fn ssh_run_with_timeout(
 ) -> Result<(), Box<dyn Error>> {
   let mut child = Command::new("ssh")
     .args(["-t", host, cmd])
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()?;
 
   let mut stdout = child.stdout.take().unwrap();

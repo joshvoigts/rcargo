@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
+use toml::map::Map;
+use toml::Value;
 use xdg::BaseDirectories;
 
 #[derive(Debug, Deserialize, Default)]
@@ -76,7 +78,7 @@ pub struct Sandbox {
   pub allow: SandboxAllow,
 
   #[serde(default)]
-  pub env: std::collections::HashMap<String, String>,
+  pub env: HashMap<String, String>,
 }
 
 impl Default for Sandbox {
@@ -108,7 +110,7 @@ impl Config {
   /// config file exists at all, returns an empty config so CLI flags
   /// (e.g. `--target`) can still be used alone.
   pub fn load() -> Result<Self, Box<dyn Error>> {
-    let mut value = toml::Value::Table(toml::map::Map::new());
+    let mut value = Value::Table(Map::new());
 
     if let Some(path) = global_config_path() {
       if path.exists() {
@@ -118,7 +120,7 @@ impl Config {
 
     if let Some(path) = project_config_path() {
       if path.exists() {
-        let project: toml::Value =
+        let project: Value =
           toml::from_str(&fs::read_to_string(&path)?)?;
         overlay(
           value.as_table_mut().unwrap(),
@@ -199,8 +201,8 @@ fn project_config_path() -> Option<PathBuf> {
 /// Per-key replace: every key the project defines replaces the corresponding
 /// global value wholesale, including entire sub-tables (no merging).
 fn overlay(
-  base: &mut toml::map::Map<String, toml::Value>,
-  overlay: &toml::map::Map<String, toml::Value>,
+  base: &mut Map<String, Value>,
+  overlay: &Map<String, Value>,
 ) {
   for (key, value) in overlay {
     base.insert(key.clone(), value.clone());

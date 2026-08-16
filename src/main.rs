@@ -10,7 +10,9 @@ use crate::config::Config;
 use clap::Parser;
 use cli::{App, Command, Step, StepName};
 use std::error::Error;
-use std::process::ExitCode;
+use std::path::Path;
+use std::process::{Command as ProcessCommand, ExitCode};
+use std::time::Duration;
 
 fn main() -> ExitCode {
   match run() {
@@ -39,7 +41,7 @@ fn run() -> Result<(), Box<dyn Error>> {
   }
 
   // Verify SSH connectivity before doing any work.
-  let status = std::process::Command::new("ssh")
+  let status = ProcessCommand::new("ssh")
     .args([
       "-o",
       "BatchMode=yes",
@@ -81,7 +83,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     None => git::current_branch()?,
   };
 
-  let timeout = std::time::Duration::from_secs(app.timeout);
+  let timeout = Duration::from_secs(app.timeout);
 
   match app.cmd {
     Command::Build => {
@@ -224,7 +226,7 @@ fn detect_package_info(
   let cargo_toml_path = match package {
     Some(pkg) => {
       let member_path = format!("{pkg}/Cargo.toml");
-      if std::path::Path::new(&member_path).exists() {
+      if Path::new(&member_path).exists() {
         member_path
       } else {
         return Err(
@@ -286,7 +288,7 @@ fn run_steps(
   home: &str,
   steps: &[Step],
   debug: bool,
-  timeout: std::time::Duration,
+  timeout: Duration,
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
 
