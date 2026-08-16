@@ -8,6 +8,7 @@ use toml::Value;
 use xdg::BaseDirectories;
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
   /// The target host to deploy to (anything you'd pass to `ssh`)
   #[serde(default)]
@@ -63,6 +64,7 @@ impl Hook {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Sandbox {
   #[serde(default = "default_true")]
   pub enabled: bool,
@@ -89,6 +91,7 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SandboxAllow {
   #[serde(default)]
   pub write: Vec<String>,
@@ -168,6 +171,67 @@ mod tests {
     let cfg = parse("");
     assert_eq!(cfg.remote_path("myapp"), "$HOME/build/myapp");
   }
+
+  #[test]
+  fn unknown_field_is_rejected() {
+    let err =
+      toml::from_str::<Config>("blah = \"hello\"").unwrap_err();
+    assert!(
+      err.to_string().contains("unknown field"),
+      "unexpected error: {err}"
+    );
+  }
+
+  #[test]
+  fn unknown_field_is_rejected_through_value_load_path() {
+    let value: Value = toml::from_str(
+      "target = \"edwin\"\nremote_path = \"/home/josh/build/edwinmain\"\nblah = \"hello\"\n\n[sandbox.env]\nDATABASE_URL = \"sqlite://db.sqlite3\"",
+    )
+    .unwrap();
+    let err = Config::deserialize(value).unwrap_err();
+    assert!(
+      err.to_string().contains("unknown field"),
+      "unexpected error: {err}"
+    );
+  }
+
+  #[test]
+  fn project_config_found_in_parent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let config = root.join("rcargo.toml");
+    std::fs::write(&config, "target = \"host\"\n").unwrap();
+
+    let nested = root.join("a").join("b").join("c");
+    std::fs::create_dir_all(&nested).unwrap();
+    let found = project_config_path_from(&nested).unwrap();
+    assert_eq!(found, config);
+  }
+
+  #[test]
+  fn project_config_prefers_nearest() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let root_config = root.join("rcargo.toml");
+    std::fs::write(&root_config, "target = \"root\"\n").unwrap();
+
+    let sub = root.join("sub").join("deep");
+    std::fs::create_dir_all(&sub).unwrap();
+    let legacy = sub.join("deploy.toml");
+    std::fs::write(&legacy, "target = \"sub\"\n").unwrap();
+
+    let found = project_config_path_from(&sub).unwrap();
+    assert_eq!(found, legacy);
+  }
+
+  #[test]
+  fn project_config_missing_returns_none() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let nested = root.join("a").join("b");
+    std::fs::create_dir_all(&nested).unwrap();
+    assert!(project_config_path_from(&nested).is_none());
+  }
 }
 
 /// Global config at `$XDG_CONFIG_HOME/rcargo/rcargo.toml` (default
@@ -181,14 +245,27 @@ fn global_config_path() -> Option<PathBuf> {
   )
 }
 
-/// Project config in the current directory. `rcargo.toml` is canonical;
-/// `deploy.toml` is still accepted for backwards compatibility.
+/// Project config, discovered by walking up from a starting directory so it
+/// works regardless of the current working directory (e.g. when invoked from
+/// a workspace subdirectory). `rcargo.toml` is canonical; `deploy.toml` is
+/// still accepted for backwards compatibility.
 fn project_config_path() -> Option<PathBuf> {
-  ["rcargo.toml", "deploy.toml"]
-    .iter()
-    .map(Path::new)
-    .find(|p| p.exists())
-    .map(|p| p.to_path_buf())
+  project_config_path_from(&std::env::current_dir().ok()?)
+}
+
+fn project_config_path_from(start: &Path) -> Option<PathBuf> {
+  let mut dir = start.to_path_buf();
+  loop {
+    for name in ["rcargo.toml", "deploy.toml"] {
+      let candidate = dir.join(name);
+      if candidate.is_file() {
+        return Some(candidate);
+      }
+    }
+    if !dir.pop() {
+      return None;
+    }
+  }
 }
 
 /// Per-key replace: every key the project defines replaces the corresponding

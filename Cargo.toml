@@ -10,3 +10,6 @@ serde = { version = "1.0", features = ["derive"] }
 shell-quote = "0.7.2"
 toml = "1.1.2"
 xdg = "3.0.0"
+
+[dev-dependencies]
+tempfile = "3.10.1"
