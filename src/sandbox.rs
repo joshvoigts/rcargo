@@ -145,14 +145,26 @@ pub fn check_cmd(
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo check --workspace{}",
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo check{}",
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
   sandbox_cmd(config, remote_path, home, debug, &inner)
 }
 
+/// Split args at the first `--`, returning (before, after).
+fn split_at_dashdash(args: &[String]) -> (Vec<String>, Vec<String>) {
+  match args.iter().position(|a| a == "--") {
+    Some(i) => (args[..i].to_vec(), args[i + 1..].to_vec()),
+    None => (args.to_vec(), Vec::new()),
+  }
+}
+
 /// Build a remote cargo clippy command, sandboxed with nono.
+///
+/// Anything before an explicit `--` in `extra_args` is treated as a cargo
+/// argument (e.g. `--workspace`, `-q`) and placed before the separator;
+/// anything after `--` is passed to clippy-driver as a lint argument.
 pub fn clippy_cmd(
   config: &Config,
   remote_path: &str,
@@ -160,10 +172,12 @@ pub fn clippy_cmd(
   extra_args: &[String],
   debug: bool,
 ) -> String {
+  let (cargo_args, lint_args) = split_at_dashdash(extra_args);
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo clippy --workspace -- -D warnings{}",
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo clippy{} -- -D warnings{}",
     shell_quote(remote_path),
-    quoted_args(extra_args)
+    quoted_args(&cargo_args),
+    quoted_args(&lint_args)
   );
   sandbox_cmd(config, remote_path, home, debug, &inner)
 }

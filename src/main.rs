@@ -274,10 +274,11 @@ fn resolve_bin_name(
 }
 
 fn one_step(name: StepName) -> Vec<Step> {
-  vec![Step {
-    name,
-    args: Vec::new(),
-  }]
+  let args: Vec<String> = match name {
+    StepName::Check | StepName::Clippy => vec!["--workspace".into()],
+    _ => Vec::new(),
+  };
+  vec![Step { name, args }]
 }
 
 /// Sync and run prebuild once, then execute each step in order,
