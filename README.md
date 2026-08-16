@@ -63,30 +63,28 @@ write = ["/opt/build-cache"]
 net = ["internal.registry.com"]
 ```
 
-### Hooks
+### Prebuild
 
 Shell commands that run on the remote host **outside the sandbox** before the build. Useful for database setup, migrations, etc.
 
 ```toml
-[hooks]
 prebuild = "sqlx database create && sqlx migrate run"
 ```
 
 Or as a list:
 
 ```toml
-[hooks]
 prebuild = [
   "sqlx database create",
   "sqlx migrate run",
 ]
 ```
 
-Hooks inherit the environment variables from `[sandbox.env]`.
+Prebuild commands inherit the environment variables from `[sandbox.env]`.
 
 ### Commands
 
-Define named command sequences that run as a single remote session (one sync, one hooks run, stopped on the first failure). A command maps a name to an ordered list of steps; each step is a built-in command optionally followed by its args.
+Define named command sequences that run as a single remote session (one sync, one prebuild run, stopped on the first failure). A command maps a name to an ordered list of steps; each step is a built-in command optionally followed by its args.
 
 ```toml
 [commands]

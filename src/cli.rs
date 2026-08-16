@@ -14,7 +14,6 @@ use clap::{Parser, Subcommand};
     enabled = true           # Enable sandboxed remote builds (default: true)\n  \
     [sandbox.env]\n  \
     DATABASE_URL = \"...\"    # Environment variables passed to the build\n  \
-    [hooks]\n  \
     prebuild = \"...\"        # Shell commands run before the build (outside sandbox)"
 )]
 pub struct App {

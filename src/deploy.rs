@@ -58,7 +58,7 @@ pub fn deploy(
 
   git::sync_repo(host, remote_path)?;
 
-  server::run_hooks(config, remote_path, debug)?;
+  server::run_prebuild(config, remote_path, debug)?;
 
   println!("Installing on remote...");
   let cmd =

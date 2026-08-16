@@ -280,7 +280,7 @@ fn one_step(name: StepName) -> Vec<Step> {
   }]
 }
 
-/// Sync and run hooks once, then execute each step in order,
+/// Sync and run prebuild once, then execute each step in order,
 /// short-circuiting on the first failure.
 fn run_steps(
   config: &Config,
@@ -292,7 +292,7 @@ fn run_steps(
 ) -> Result<(), Box<dyn Error>> {
   git::sync_repo(&config.target, remote_path)?;
 
-  server::run_hooks(config, remote_path, debug)?;
+  server::run_prebuild(config, remote_path, debug)?;
 
   for step in steps {
     let label = step.name.as_str();

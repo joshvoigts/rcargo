@@ -35,21 +35,14 @@ pub struct Config {
   #[serde(default)]
   pub sandbox: Sandbox,
 
-  /// Shell hooks that run on the remote host outside the sandbox.
+  /// Command(s) to run after sync but before the sandboxed build.
   #[serde(default)]
-  pub hooks: Hooks,
+  pub prebuild: Option<Hook>,
 
   /// User-defined commands. Maps a command name to an ordered list of
   /// steps, each a `"<cmd> [args...]"` string. e.g. `ci = ["lint", "test --workspace -q"]`
   #[serde(default)]
   pub commands: HashMap<String, Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub struct Hooks {
-  /// Command(s) to run after sync but before the sandboxed build.
-  #[serde(default)]
-  pub prebuild: Option<Hook>,
 }
 
 /// A hook command. Accepts either a single string or a list of strings.
