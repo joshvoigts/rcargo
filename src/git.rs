@@ -3,7 +3,7 @@ use ignore::gitignore::Gitignore;
 use std::error::Error;
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// Sync the local repo to the remote via rsync.
@@ -11,7 +11,8 @@ use std::process::{Command, Stdio};
 /// rsync mirrors the whole working tree (`--delete`) but gitignored paths
 /// are excluded so build artifacts and databases are untouched. The
 /// `ignore` crate's `Gitignore` matcher decides what is ignored, honouring
-/// `!` negations. `.git` is skipped explicitly.
+/// `!` negations. `.git` is skipped explicitly. The repo root's `.gitignore`
+/// is honoured no matter which directory the user is cd'd into.
 pub fn sync_repo(
   host: &str,
   remote_path: &str,
@@ -20,10 +21,18 @@ pub fn sync_repo(
   ssh_run(host, &format!("mkdir -p {}", shell_quote(remote_path)))?;
 
   println!("Syncing to remote...");
-  let root = Path::new(".");
-  let (matcher, _) = Gitignore::new(".gitignore");
+  let sync_root = fs::canonicalize(".")?;
+  let repo_root =
+    repo_root(&sync_root).unwrap_or_else(|| sync_root.clone());
+  let (matcher, _) = Gitignore::new(repo_root.join(".gitignore"));
   let mut excludes = Vec::new();
-  collect_excludes(root, &matcher, &mut excludes, root)?;
+  collect_excludes(
+    &repo_root,
+    &matcher,
+    &mut excludes,
+    &sync_root,
+    &sync_root,
+  )?;
 
   let mut child = Command::new("rsync")
     .args([
@@ -49,15 +58,33 @@ pub fn sync_repo(
   Ok(())
 }
 
+/// Find the repo root via git, or `None` when not inside a work tree.
+fn repo_root(cwd: &Path) -> Option<PathBuf> {
+  let out = Command::new("git")
+    .args(["rev-parse", "--show-toplevel"])
+    .current_dir(cwd)
+    .output()
+    .ok()?;
+  if !out.status.success() {
+    return None;
+  }
+  Some(PathBuf::from(
+    String::from_utf8_lossy(&out.stdout).trim().to_string(),
+  ))
+}
+
 /// Recursively collect gitignored paths under `dir` as rsync exclude rules
 /// (ignored files as-is, ignored directories with a trailing slash so rsync
-/// skips their whole subtree). Rules are anchored at the sync root (leading
-/// `/`) so they only match the exact root-relative paths. Whitelisted via
-/// `!` are descended into; fully-ignored directories are pruned.
+/// skips their whole subtree). Ignore status is decided against
+/// `matcher_root` (the repo root); rules are emitted anchored at `sync_root`
+/// (the rsync source) so they only match the exact paths being transferred.
+/// Whitelisted via `!` are descended into; fully-ignored directories are
+/// pruned.
 fn collect_excludes(
-  root: &Path,
+  matcher_root: &Path,
   matcher: &Gitignore,
   excludes: &mut Vec<String>,
+  sync_root: &Path,
   dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
   for entry in fs::read_dir(dir)? {
@@ -67,15 +94,26 @@ fn collect_excludes(
       continue;
     }
     let is_dir = entry.file_type()?.is_dir();
-    let rel = path.strip_prefix(root).unwrap();
-    if matcher.matched(rel, is_dir).is_ignore() {
-      let mut exclude = format!("/{}", rel.to_string_lossy());
+    if matcher
+      .matched(path.strip_prefix(matcher_root).unwrap(), is_dir)
+      .is_ignore()
+    {
+      let mut exclude = format!(
+        "/{}",
+        path.strip_prefix(sync_root).unwrap().to_string_lossy()
+      );
       if is_dir {
         exclude.push('/');
       }
       excludes.push(exclude);
     } else if is_dir {
-      collect_excludes(root, matcher, excludes, &path)?;
+      collect_excludes(
+        matcher_root,
+        matcher,
+        excludes,
+        sync_root,
+        &path,
+      )?;
     }
   }
   Ok(())
@@ -116,7 +154,8 @@ mod tests {
 
     let (matcher, _) = Gitignore::new(root.join(".gitignore"));
     let mut excludes = Vec::new();
-    collect_excludes(&root, &matcher, &mut excludes, &root).unwrap();
+    collect_excludes(&root, &matcher, &mut excludes, &root, &root)
+      .unwrap();
 
     assert!(excludes.contains(&"/.cargo/other".to_string()));
     assert!(excludes.contains(&"/target/".to_string()));
@@ -135,7 +174,46 @@ mod tests {
 
     let (matcher, _) = Gitignore::new(root.join(".gitignore"));
     let mut excludes = Vec::new();
-    collect_excludes(&root, &matcher, &mut excludes, &root).unwrap();
+    collect_excludes(&root, &matcher, &mut excludes, &root, &root)
+      .unwrap();
     assert!(excludes.is_empty());
+  }
+
+  #[test]
+  fn honors_gitignore_from_inner_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+    std::fs::write(root.join("sub/a.log"), "x").unwrap();
+    std::fs::write(root.join("sub/keep.txt"), "k").unwrap();
+    std::fs::write(root.join(".gitignore"), "*.log\n").unwrap();
+
+    let (matcher, _) = Gitignore::new(root.join(".gitignore"));
+    let sub = root.join("sub");
+    let mut excludes = Vec::new();
+    collect_excludes(&root, &matcher, &mut excludes, &sub, &sub)
+      .unwrap();
+
+    assert!(excludes.contains(&"/a.log".to_string()));
+    assert!(!excludes.contains(&"/keep.txt".to_string()));
+  }
+
+  #[test]
+  fn anchored_exclude_does_not_match_nested() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    std::fs::create_dir_all(root.join("target")).unwrap();
+    std::fs::create_dir_all(root.join("src/target")).unwrap();
+    std::fs::write(root.join("target/a"), "x").unwrap();
+    std::fs::write(root.join("src/target/b"), "y").unwrap();
+    std::fs::write(root.join(".gitignore"), "/target\n").unwrap();
+
+    let (matcher, _) = Gitignore::new(root.join(".gitignore"));
+    let mut excludes = Vec::new();
+    collect_excludes(&root, &matcher, &mut excludes, &root, &root)
+      .unwrap();
+
+    assert!(excludes.contains(&"/target/".to_string()));
+    assert!(!excludes.contains(&"/src/target/".to_string()));
   }
 }
