@@ -51,8 +51,9 @@ pub fn sync_repo(
 
 /// Recursively collect gitignored paths under `dir` as rsync exclude rules
 /// (ignored files as-is, ignored directories with a trailing slash so rsync
-/// skips their whole subtree). Whitelisted via `!` are descended into;
-/// fully-ignored directories are pruned.
+/// skips their whole subtree). Rules are anchored at the sync root (leading
+/// `/`) so they only match the exact root-relative paths. Whitelisted via
+/// `!` are descended into; fully-ignored directories are pruned.
 fn collect_excludes(
   root: &Path,
   matcher: &Gitignore,
@@ -66,9 +67,9 @@ fn collect_excludes(
       continue;
     }
     let is_dir = entry.file_type()?.is_dir();
-    let rel = path.strip_prefix(root).unwrap_or(&path);
+    let rel = path.strip_prefix(root).unwrap();
     if matcher.matched(rel, is_dir).is_ignore() {
-      let mut exclude = rel.to_string_lossy().into_owned();
+      let mut exclude = format!("/{}", rel.to_string_lossy());
       if is_dir {
         exclude.push('/');
       }
@@ -117,11 +118,11 @@ mod tests {
     let mut excludes = Vec::new();
     collect_excludes(&root, &matcher, &mut excludes, &root).unwrap();
 
-    assert!(excludes.contains(&".cargo/other".to_string()));
-    assert!(excludes.contains(&"target/".to_string()));
-    assert!(!excludes.contains(&".cargo/".to_string()));
-    assert!(!excludes.contains(&".cargo/config.toml".to_string()));
-    assert!(!excludes.contains(&"src/main.rs".to_string()));
+    assert!(excludes.contains(&"/.cargo/other".to_string()));
+    assert!(excludes.contains(&"/target/".to_string()));
+    assert!(!excludes.contains(&"/.cargo/".to_string()));
+    assert!(!excludes.contains(&"/.cargo/config.toml".to_string()));
+    assert!(!excludes.contains(&"/src/main.rs".to_string()));
   }
 
   #[test]
