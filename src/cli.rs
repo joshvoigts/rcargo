@@ -66,6 +66,8 @@ pub enum Command {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     args: Vec<String>,
   },
+  /// Remove a remote lock, killing the owning rcargo if still running
+  Unlock,
   /// Run a user-defined command from `[commands]` in the config
   #[command(external_subcommand)]
   Custom(Vec<String>),

@@ -39,6 +39,8 @@ pub fn sync_repo(
       "-az",
       "--delete",
       "--exclude=.git",
+      // The remote lock (see lock.rs) lives in the repo dir; keep it out of sync.
+      "--exclude=.rcargo.lock",
       "--exclude-from=-",
       "./",
     ])

@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod deploy;
 mod git;
+mod lock;
 mod sandbox;
 mod server;
 mod ssh;
@@ -9,9 +10,10 @@ mod ssh;
 use crate::config::Config;
 use clap::Parser;
 use cli::{App, Command, Step, StepName};
+use lock::Lock;
 use std::error::Error;
 use std::path::Path;
-use std::process::{Command as ProcessCommand, ExitCode};
+use std::process::{id, Command as ProcessCommand, ExitCode};
 use std::time::Duration;
 
 fn main() -> ExitCode {
@@ -85,6 +87,20 @@ fn run() -> Result<(), Box<dyn Error>> {
 
   let timeout = Duration::from_secs(app.timeout);
 
+  // Serialize the remote build dir: hold the lock for every command that
+  // mutates the remote. Read-only `status` skips it. The guard releases the
+  // lock on drop, i.e. after the command (success or error).
+  let _lock = match &app.cmd {
+    // Read-only, or the command that clears the lock itself.
+    Command::Status | Command::Unlock => None,
+    _ => Some(Lock::acquire(
+      &cfg.target,
+      &lock::lock_path(&remote_path),
+      id(),
+      timeout,
+    )?),
+  };
+
   match app.cmd {
     Command::Build => {
       run_steps(
@@ -138,6 +154,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
     Command::Stop => {
       server::stop_server(&cfg.target, &remote_path, &bin_name)?;
+    }
+    Command::Unlock => {
+      lock::unlock(&cfg.target, &remote_path)?;
     }
     Command::Deploy => {
       deploy::deploy(
