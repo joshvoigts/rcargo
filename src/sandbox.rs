@@ -17,6 +17,7 @@ fn sandbox_cmd(
   remote_path: &str,
   home: &str,
   debug: bool,
+  allow_pty: bool,
   inner: &str,
 ) -> String {
   if !config.sandbox.enabled {
@@ -52,6 +53,16 @@ fn sandbox_cmd(
   for w in &config.sandbox.allow.write {
     args.push("--allow".into());
     args.push(w.clone());
+  }
+
+  // PTY-based test suites (terminal_e2e, full_e2e) allocate a pseudo-
+  // terminal. Grant the master mux and the dynamic slave devices so
+  // posix_openpt + slave ioctls succeed.
+  if allow_pty {
+    args.push("--allow-file".into());
+    args.push("/dev/ptmx".into());
+    args.push("--allow".into());
+    args.push("/dev/pts".into());
   }
 
   // Network: allow only specific domains via proxy filtering.
@@ -123,7 +134,7 @@ pub fn build_cmd(
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
-  sandbox_cmd(config, remote_path, home, debug, &inner)
+  sandbox_cmd(config, remote_path, home, debug, false, &inner)
 }
 
 /// Build a remote cargo test command, sandboxed with nono.
@@ -139,7 +150,7 @@ pub fn test_cmd(
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
-  sandbox_cmd(config, remote_path, home, debug, &inner)
+  sandbox_cmd(config, remote_path, home, debug, true, &inner)
 }
 
 /// Build a remote cargo check command, sandboxed with nono.
@@ -155,7 +166,7 @@ pub fn check_cmd(
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
-  sandbox_cmd(config, remote_path, home, debug, &inner)
+  sandbox_cmd(config, remote_path, home, debug, false, &inner)
 }
 
 /// Split args at the first `--`, returning (before, after).
@@ -185,7 +196,7 @@ pub fn clippy_cmd(
     quoted_args(&cargo_args),
     quoted_args(&lint_args)
   );
-  sandbox_cmd(config, remote_path, home, debug, &inner)
+  sandbox_cmd(config, remote_path, home, debug, false, &inner)
 }
 
 /// Build a remote cargo lint command (provided by a lint xtask),
@@ -202,7 +213,7 @@ pub fn lint_cmd(
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
-  sandbox_cmd(config, remote_path, home, debug, &inner)
+  sandbox_cmd(config, remote_path, home, debug, false, &inner)
 }
 
 /// Build a remote cargo install command, sandboxed with nono.
@@ -224,5 +235,5 @@ pub fn install_cmd(
     shell_quote(remote_path),
     shell_quote(&install_path),
   );
-  sandbox_cmd(config, remote_path, home, debug, &inner)
+  sandbox_cmd(config, remote_path, home, debug, false, &inner)
 }
