@@ -218,22 +218,36 @@ pub fn lint_cmd(
 
 /// Build a remote cargo install command, sandboxed with nono.
 ///
-/// Installs the binary from the project into `~/.cargo/bin/`.
+/// Builds the binary via `cargo build --release --bin` and copies it
+/// into `{home}/.cargo/bin/`. This is more reliable than `cargo install`
+/// which can fail inside sandboxed environments with
+/// "no packages found with binaries or examples".
 pub fn install_cmd(
   config: &Config,
   remote_path: &str,
   home: &str,
   package: Option<&str>,
+  bin_name: &str,
   debug: bool,
 ) -> String {
   let install_path = match package {
     Some(pkg) => format!("{remote_path}/{pkg}"),
     None => remote_path.to_string(),
   };
-  let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo install --path {} --force",
-    shell_quote(remote_path),
+  let bin_arg = shell_quote(bin_name);
+  let target = format!(
+    "{}/target/release/{}",
     shell_quote(&install_path),
+    bin_arg
+  );
+  let dest = format!("{}/.cargo/bin/{}", shell_quote(home), bin_arg);
+  let inner = format!(
+    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo build --release --bin {} \
+     && cp {} {}",
+    shell_quote(&install_path),
+    bin_arg,
+    target,
+    dest,
   );
   sandbox_cmd(config, remote_path, home, debug, false, &inner)
 }

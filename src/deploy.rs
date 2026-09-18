@@ -61,8 +61,14 @@ pub fn deploy(
   server::run_prebuild(config, remote_path, debug)?;
 
   println!("Installing on remote...");
-  let cmd =
-    sandbox::install_cmd(config, remote_path, home, package, debug);
+  let cmd = sandbox::install_cmd(
+    config,
+    remote_path,
+    home,
+    package,
+    bin_name,
+    debug,
+  );
   ssh::ssh_run(host, &cmd)?;
 
   println!("Configuring systemd service...");
