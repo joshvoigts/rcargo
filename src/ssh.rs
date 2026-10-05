@@ -128,7 +128,9 @@ pub fn ssh_run_with_timeout(
   if timed_out {
     return Err(
       format!(
-        "Remote command timed out after {} seconds",
+        "Remote command timed out after {} seconds.\n\
+         If the remote build is genuinely long (e.g. first compile of a \
+         workspace), raise --timeout.",
         timeout.as_secs()
       )
       .into(),

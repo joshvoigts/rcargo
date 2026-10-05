@@ -87,15 +87,16 @@ fn run() -> Result<(), Box<dyn Error>> {
 
   let timeout = Duration::from_secs(app.timeout);
 
-  // Serialize the remote build dir: hold the lock for every command that
-  // mutates the remote. Read-only `status` skips it. The guard releases the
-  // lock on drop, i.e. after the command (success or error).
+  // Serialize work on the remote host: hold the shared per-host lock for
+  // every command that mutates the remote. Read-only `status` skips it. The
+  // guard releases the lock on drop, i.e. after the command (success or
+  // error).
   let _lock = match &app.cmd {
     // Read-only, or the command that clears the lock itself.
     Command::Status | Command::Unlock => None,
     _ => Some(Lock::acquire(
       &cfg.target,
-      &lock::lock_path(&remote_path),
+      &lock::lock_path(&home),
       id(),
       timeout,
     )?),
@@ -156,7 +157,7 @@ fn run() -> Result<(), Box<dyn Error>> {
       server::stop_server(&cfg.target, &remote_path, &bin_name)?;
     }
     Command::Unlock => {
-      lock::unlock(&cfg.target, &remote_path)?;
+      lock::unlock(&cfg.target, &home)?;
     }
     Command::Deploy => {
       deploy::deploy(
