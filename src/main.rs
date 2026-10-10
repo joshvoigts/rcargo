@@ -80,18 +80,13 @@ fn run() -> Result<(), Box<dyn Error>> {
     remote_path = remote_path.replace("$HOME", &home);
   }
 
-  let branch = match &app.branch {
-    Some(b) => b.clone(),
-    None => git::current_branch()?,
-  };
-
   let timeout = Duration::from_secs(app.timeout);
 
   // Serialize work on the remote host: hold the shared per-host lock for
   // every command that mutates the remote. Read-only `status` skips it. The
   // guard releases the lock on drop, i.e. after the command (success or
   // error).
-  let _lock = match &app.cmd {
+  let mut _lock = match &app.cmd {
     // Read-only, or the command that clears the lock itself.
     Command::Status | Command::Unlock => None,
     _ => Some(Lock::acquire(
@@ -144,11 +139,24 @@ fn run() -> Result<(), Box<dyn Error>> {
       )?;
     }
     Command::Run => {
-      server::run_server(
+      // Building mutates the remote, so it runs under the lock; the
+      // foreground process itself must not hold it, or Ctrl+C (the stop
+      // mechanism) would leave a stale lock behind.
+      server::prepare_run(
         &cfg,
         &remote_path,
         &home,
-        &branch,
+        &bin_name,
+        app.debug,
+      )?;
+      drop(_lock.take());
+      server::run_foreground(&cfg.target, &remote_path, &bin_name)?;
+    }
+    Command::Start => {
+      server::start_server(
+        &cfg,
+        &remote_path,
+        &home,
         &bin_name,
         app.debug,
       )?;

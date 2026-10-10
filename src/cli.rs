@@ -24,10 +24,6 @@ pub struct App {
   #[arg(long, short)]
   pub target: Option<String>,
 
-  /// Override the branch (defaults to current branch)
-  #[arg(long, short)]
-  pub branch: Option<String>,
-
   /// Workspace member to install (overrides rcargo.toml)
   #[arg(long, short)]
   pub package: Option<String>,
@@ -56,9 +52,11 @@ pub enum Command {
   Clippy,
   /// Run lint on remote (cargo lint, provided by a lint xtask)
   Lint,
-  /// Build and run on remote
+  /// Build and run on remote in the foreground (Ctrl+C stops)
   Run,
-  /// Stop the running process on remote
+  /// Build and start on remote in the background (nohup + pid file)
+  Start,
+  /// Stop the background process on remote
   Stop,
   /// Run tests on remote
   Test {

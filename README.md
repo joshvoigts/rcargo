@@ -106,7 +106,7 @@ Global flags (like `--debug`) must come **before** the command name:
 rcargo --debug ci
 ```
 
-Command names must not collide with the built-in subcommands (`build`, `check`, `clippy`, `lint`, `run`, `stop`, `test`, `deploy`, `undeploy`, `status`) — those are dispatched to the built-in behavior, not to `[commands]`. A misspelled command (e.g. `rcargo buid`) also reports `no command 'buid' defined in [commands]`.
+Command names must not collide with the built-in subcommands (`build`, `check`, `clippy`, `lint`, `run`, `start`, `stop`, `test`, `deploy`, `undeploy`, `status`) — those are dispatched to the built-in behavior, not to `[commands]`. A misspelled command (e.g. `rcargo buid`) also reports `no command 'buid' defined in [commands]`.
 
 ## Usage
 
@@ -119,17 +119,23 @@ rcargo build          # Build on remote (sandboxed)
 rcargo check          # Check code on remote (cargo check, sandboxed)
 rcargo clippy         # Run clippy on remote (cargo clippy, sandboxed)
 rcargo lint           # Run lint on remote (cargo lint, via lint xtask, sandboxed)
-rcargo run            # Stop existing process, build, and launch on remote
-rcargo stop           # Stop the running process on remote
+rcargo run            # Stop existing process, build, and run in the foreground; Ctrl+C stops
+rcargo start          # Stop existing process, build, and launch in the background (nohup, pid file)
+rcargo stop           # Stop the background process on remote
 rcargo test                  # Run tests on remote (sandboxed)
 rcargo test -- --skip foo    # Pass extra args to cargo test
 rcargo <command>             # Run a user-defined command from [commands] (e.g. `rcargo ci`)
 ```
 
+All three lifecycle commands (`run`, `start`, `deploy`) stop any existing background instance first (from `start` or `deploy`), then sync your working tree and rebuild. The difference is how the binary is launched and kept alive:
+
+- `run` — foreground: output streams back to your terminal and the process stops when you press Ctrl+C (like `cargo run` over SSH). In a terminal it dies with the SSH connection.
+- `start` — background: launched with `nohup`, output goes to `rcargo.pid.log`, PID recorded in `rcargo.pid`. Survives logout but not a reboot, and is not restarted if it crashes.
+- `deploy` — supervised: installed to `~/.cargo/bin` and managed as a systemd user service (`Restart=on-failure`, survives reboots via linger). Logs via `journalctl --user -u {name}.service`.
+
 ### Flags
 
 - `--target, -t` — Override the target host from config
-- `--branch, -b` — Override the branch (defaults to current branch)
 - `--package, -p` — Workspace member to install (overrides config)
 - `--bin` — Binary name override (defaults to auto-detect from [[bin]] target)
 - `--timeout` — Timeout in seconds for remote commands (default: 600)

@@ -142,11 +142,12 @@ pub fn status_server(
   Ok(())
 }
 
-pub fn run_server(
+/// Stop any existing instance, sync the repo, run prebuild, and build the
+/// release binary. Shared by `start` and the foreground `run`.
+pub fn prepare_run(
   config: &Config,
   remote_path: &str,
   home: &str,
-  _branch: &str,
   bin_name: &str,
   debug: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -161,6 +162,35 @@ pub fn run_server(
   println!("Building on remote...");
   let cmd = sandbox::build_cmd(config, remote_path, home, &[], debug);
   ssh::ssh_run(host, &cmd)?;
+  Ok(())
+}
+
+/// Run the built binary in the foreground, streaming its output back to
+/// the local terminal. Ctrl+C forwards to the remote process through the
+/// SSH pty, so the app stops with it.
+pub fn run_foreground(
+  host: &str,
+  remote_path: &str,
+  bin_name: &str,
+) -> Result<(), Box<dyn Error>> {
+  let cd_path = ssh::shell_quote(remote_path);
+  let bin_path = ssh::shell_quote(&format!(
+    "{remote_path}/target/release/{bin_name}"
+  ));
+  println!("Running on remote (Ctrl+C to stop)...");
+  ssh::ssh_run(host, &format!("cd {cd_path} && exec {bin_path}"))
+}
+
+pub fn start_server(
+  config: &Config,
+  remote_path: &str,
+  home: &str,
+  bin_name: &str,
+  debug: bool,
+) -> Result<(), Box<dyn Error>> {
+  let host = &config.target;
+
+  prepare_run(config, remote_path, home, bin_name, debug)?;
 
   let bin_path = ssh::shell_quote(&format!(
     "{remote_path}/target/release/{bin_name}"
