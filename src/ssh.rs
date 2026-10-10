@@ -293,6 +293,73 @@ pub fn ssh_capture(
   Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Run a command on the remote via SSH, capturing stdout, with a
+/// keep-alive byte written to its stdin every `interval`.
+///
+/// The remote command must block on `read`s of its stdin: each
+/// keep-alive wake-up ticks it, and when this process dies (Ctrl-C,
+/// kill, crash) the pipe closes, the remote `read` hits EOF, and the
+/// remote loop exits. So an interrupted rcargo can never leave an
+/// orphaned remote waiter behind to steal a lock back after `unlock`.
+/// Error formatting matches [`ssh_capture`].
+pub fn ssh_capture_keepalive(
+  host: &str,
+  cmd: &str,
+  interval: Duration,
+) -> Result<String, Box<dyn Error>> {
+  let mut child = Command::new("ssh")
+    .args([host, cmd])
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()?;
+
+  let mut stdin = child.stdin.take().unwrap();
+  let mut stdout = child.stdout.take().unwrap();
+  let mut stderr = child.stderr.take().unwrap();
+
+  // Newline every interval; stop when the pipe breaks (child exited), so
+  // the thread ends promptly.
+  let keepalive = std::thread::spawn(move || loop {
+    std::thread::sleep(interval);
+    match stdin.write_all(b"\n") {
+      Ok(_) => (),
+      Err(_) => break,
+    }
+  });
+
+  let stderr_handle = std::thread::spawn(move || {
+    let mut buf = Vec::new();
+    let _ = stderr.read_to_end(&mut buf);
+    buf
+  });
+
+  let mut out = Vec::new();
+  let _ = stdout.read_to_end(&mut out);
+
+  let status = child.wait()?;
+  let _ = keepalive.join();
+  let stderr_bytes = stderr_handle.join().unwrap_or_default();
+
+  if !status.success() {
+    let err = String::from_utf8_lossy(&stderr_bytes);
+    let stdout_str = String::from_utf8_lossy(&out);
+    let mut msg = format!(
+      "Remote command failed on {host} with exit code: {}",
+      status.code().unwrap_or(-1)
+    );
+    if !err.is_empty() {
+      msg.push_str(&format!("\n{err}"));
+    }
+    if !stdout_str.is_empty() {
+      msg.push_str(&format!("\n{stdout_str}"));
+    }
+    return Err(msg.into());
+  }
+
+  Ok(String::from_utf8_lossy(&out).trim().to_string())
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

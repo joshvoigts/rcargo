@@ -15,7 +15,10 @@ use std::time::Duration;
 /// wait time up front. A lock left behind by an interrupted rcargo
 /// (Ctrl-C, kill, sleep, dropped connection) is cleared with `rcargo
 /// unlock`; rcargo never steals a lock, because the recorded owner PID is
-/// only meaningful on the machine that wrote it.
+/// only meaningful on the machine that wrote it. Waiters die with their
+/// connection: the wait loop blocks on `read`s of its stdin — ticked by a
+/// local keep-alive — so a killed rcargo ends its waiter via EOF instead
+/// of leaving it to re-take the lock the moment `unlock` removes it.
 pub fn lock_path(home: &str) -> String {
   format!("{home}/.rcargo.lock")
 }
@@ -171,32 +174,9 @@ impl Lock {
       );
     }
 
-    let cmd = format!(
-      "LOCK={lock}\n\
-       HOLDER={pid}\n\
-       MAXWAIT={max_wait}\n\
-       mkdir -p \"$(dirname \"$LOCK\")\"\n\
-       if [ \"$(cat \"$LOCK/holder\" 2>/dev/null)\" = \"$HOLDER\" ]; then\n\
-       exit 0\n\
-       fi\n\
-       if ! mkdir \"$LOCK\" 2>/dev/null; then\n\
-       START=$(date +%s)\n\
-       while ! mkdir \"$LOCK\" 2>/dev/null; do\n\
-       NOW=$(date +%s)\n\
-       if [ $((NOW - START)) -ge \"$MAXWAIT\" ]; then\n\
-       echo \"Timed out after ${{MAXWAIT}}s waiting for the remote lock at $LOCK\" >&2\n\
-       echo \"A previous rcargo may be stuck. If none is running, clear it with: rcargo unlock\" >&2\n\
-       exit 1\n\
-       fi\n\
-       sleep 1\n\
-       done\n\
-       fi\n\
-       echo \"$HOLDER\" > \"$LOCK/holder\"",
-      lock = lock,
-      pid = local_pid,
-      max_wait = max_wait.as_secs(),
-    );
-    let out = ssh::ssh_capture(host, &cmd)?;
+    let cmd = wait_script(path, local_pid, max_wait);
+    let out =
+      ssh::ssh_capture_keepalive(host, &cmd, Duration::from_secs(1))?;
     if !out.is_empty() {
       println!("{out}");
     }
@@ -207,6 +187,52 @@ impl Lock {
   }
 }
 
+/// The remote wait-loop script: claims `path` via atomic `mkdir` once
+/// ownership is free, or after `max_wait` reports a timeout.
+///
+/// The loop is ticked by one `read` of stdin per wait iteration — the
+/// local side's keep-alive supplies a newline each second. EOF on stdin
+/// (the local rcargo died) ends the loop without claiming the lock, so
+/// nothing survives to steal it back after `unlock`. The holder is only
+/// written on a successful `mkdir`, so an EOF-interrupted waiter never
+/// overwrites another owner's PID.
+fn wait_script(
+  path: &str,
+  local_pid: u32,
+  max_wait: Duration,
+) -> String {
+  let lock = ssh::shell_quote(path);
+  format!(
+    "LOCK={lock}\n\
+     HOLDER={pid}\n\
+     MAXWAIT={max_wait}\n\
+     mkdir -p \"$(dirname \"$LOCK\")\"\n\
+     if [ \"$(cat \"$LOCK/holder\" 2>/dev/null)\" = \"$HOLDER\" ]; then\n\
+     exit 0\n\
+     fi\n\
+     if mkdir \"$LOCK\" 2>/dev/null; then\n\
+     echo \"$HOLDER\" > \"$LOCK/holder\"\n\
+     else\n\
+     START=$(date +%s)\n\
+     while read _; do\n\
+     if mkdir \"$LOCK\" 2>/dev/null; then\n\
+     echo \"$HOLDER\" > \"$LOCK/holder\"\n\
+     break\n\
+     fi\n\
+     NOW=$(date +%s)\n\
+     if [ $((NOW - START)) -ge \"$MAXWAIT\" ]; then\n\
+     echo \"Timed out after ${{MAXWAIT}}s waiting for the remote lock at $LOCK\" >&2\n\
+     echo \"A previous rcargo may be stuck. If none is running, clear it with: rcargo unlock\" >&2\n\
+     exit 1\n\
+     fi\n\
+     done\n\
+     fi",
+    lock = lock,
+    pid = local_pid,
+    max_wait = max_wait.as_secs(),
+  )
+}
+
 impl Drop for Lock {
   fn drop(&mut self) {
     // We only hold the lock if acquire succeeded, so removing it is safe.
@@ -214,5 +240,123 @@ impl Drop for Lock {
       &self.host,
       &format!("rm -rf {lock}", lock = ssh::shell_quote(&self.path)),
     );
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::io::Write;
+  use std::process::{Command, Stdio};
+  use std::time::Duration;
+
+  fn sh_cmd(cmd: &str) -> bool {
+    match Command::new("sh").args(["-c", cmd]).output() {
+      Ok(o) => o.status.success(),
+      Err(_) => false,
+    }
+  }
+
+  fn sh_out(cmd: &str) -> String {
+    match Command::new("sh").args(["-c", cmd]).output() {
+      Ok(o) if o.status.success() => {
+        String::from_utf8_lossy(&o.stdout).trim().to_string()
+      }
+      _ => "".to_string(),
+    }
+  }
+
+  /// Run the wait script under `sh` with piped stdin: write one wake-up
+  /// line when `wake` is set, then close stdin so a waiter whose writer
+  /// is gone sees EOF. Returns whether the script exited successfully.
+  fn run_wait_script(wake: bool, script: &str) -> bool {
+    let mut child = match Command::new("sh")
+      .args(["-c", script])
+      .stdin(Stdio::piped())
+      .stdout(Stdio::piped())
+      .stderr(Stdio::piped())
+      .spawn()
+    {
+      Ok(c) => c,
+      Err(_) => return false,
+    };
+    {
+      let mut stdin = child.stdin.take().unwrap();
+      if wake {
+        let _ = stdin.write_all(b"wake\n");
+      }
+    } // stdin closed: a waiter whose writer died sees EOF here
+    match child.wait() {
+      Ok(s) => s.success(),
+      Err(_) => false,
+    }
+  }
+
+  /// A waiter whose stdin hit EOF must end without claiming a lock held
+  /// by someone else: the holder PID stays intact and the lock survives.
+  fn eof_does_not_claim(wake: bool) {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let home = root.to_string_lossy();
+    let lock = lock_path(&home);
+    let holder = holder_path(&home);
+    assert!(sh_cmd(&format!(
+      "mkdir -p {l} && echo 999 > {h}",
+      l = ssh::shell_quote(&lock),
+      h = ssh::shell_quote(&holder),
+    )));
+    let script = wait_script(&lock, 1234, Duration::from_secs(10));
+    assert!(run_wait_script(wake, &script));
+    assert_eq!(
+      sh_out(&format!("cat {h}", h = ssh::shell_quote(&holder))),
+      "999"
+    );
+    assert!(sh_cmd(&format!(
+      "test -d {l}",
+      l = ssh::shell_quote(&lock)
+    )));
+  }
+
+  #[test]
+  fn eof_immediately_does_not_claim_foreign_lock() {
+    eof_does_not_claim(false);
+  }
+
+  #[test]
+  fn wake_without_release_does_not_claim_foreign_lock() {
+    eof_does_not_claim(true);
+  }
+
+  #[test]
+  fn waiter_claims_free_lock_and_writes_holder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let home = root.to_string_lossy();
+    let lock = lock_path(&home);
+    let holder = holder_path(&home);
+    let script = wait_script(&lock, 1234, Duration::from_secs(10));
+    assert!(run_wait_script(true, &script));
+    assert_eq!(
+      sh_out(&format!("cat {h}", h = ssh::shell_quote(&holder))),
+      "1234"
+    );
+    assert!(sh_cmd(&format!(
+      "test -d {l}",
+      l = ssh::shell_quote(&lock)
+    )));
+  }
+
+  #[test]
+  fn waiter_times_out_when_maxwait_elapses() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let home = root.to_string_lossy();
+    let lock = lock_path(&home);
+    let script = wait_script(&lock, 1234, Duration::from_secs(0));
+    assert!(sh_cmd(&format!(
+      "mkdir -p {l}",
+      l = ssh::shell_quote(&lock)
+    )));
+    assert!(!run_wait_script(true, &script));
   }
 }
