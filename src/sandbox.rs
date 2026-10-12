@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::ssh::shell_quote;
+use crate::ssh::JOB_ENV;
 use std::io::{self, IsTerminal};
 
 /// Wrap an inner remote command in a nono sandbox unless disabled.
@@ -130,7 +131,7 @@ pub fn build_cmd(
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo build --release{}",
+    "cd {} && {JOB_ENV} CARGO_TERM_PROGRESS_WHEN=never cargo build --release{}",
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
@@ -146,7 +147,7 @@ pub fn test_cmd(
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo test{}",
+    "cd {} && {JOB_ENV} CARGO_TERM_PROGRESS_WHEN=never cargo test{}",
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
@@ -162,7 +163,7 @@ pub fn check_cmd(
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo check{}",
+    "cd {} && {JOB_ENV} CARGO_TERM_PROGRESS_WHEN=never cargo check{}",
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
@@ -191,7 +192,7 @@ pub fn clippy_cmd(
 ) -> String {
   let (cargo_args, lint_args) = split_at_dashdash(extra_args);
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo clippy{} -- -D warnings{}",
+    "cd {} && {JOB_ENV} CARGO_TERM_PROGRESS_WHEN=never cargo clippy{} -- -D warnings{}",
     shell_quote(remote_path),
     quoted_args(&cargo_args),
     quoted_args(&lint_args)
@@ -209,7 +210,7 @@ pub fn lint_cmd(
   debug: bool,
 ) -> String {
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo lint{}",
+    "cd {} && {JOB_ENV} CARGO_TERM_PROGRESS_WHEN=never cargo lint{}",
     shell_quote(remote_path),
     quoted_args(extra_args)
   );
@@ -242,7 +243,7 @@ pub fn install_cmd(
   );
   let dest = format!("{}/.cargo/bin/{}", shell_quote(home), bin_arg);
   let inner = format!(
-    "cd {} && CARGO_TERM_PROGRESS_WHEN=never cargo build --release --bin {} \
+    "cd {} && {JOB_ENV} CARGO_TERM_PROGRESS_WHEN=never cargo build --release --bin {} \
      && cp {} {}",
     shell_quote(&install_path),
     bin_arg,

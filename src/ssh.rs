@@ -126,9 +126,20 @@ pub fn ssh_run_with_timeout(
   let stderr_bytes = stderr_handle.join().unwrap_or_default();
 
   if timed_out {
+    // Killing the local ssh left the remote command running: reap it, or
+    // the build keeps hammering the tree that the next holder locks.
+    let reaped = reap_remote_work(host);
+    let reaped_note = if reaped > 0 {
+      format!(
+        "\nReaped {reaped} orphaned remote build process(es) it left \
+         behind."
+      )
+    } else {
+      String::new()
+    };
     return Err(
       format!(
-        "Remote command timed out after {} seconds.\n\
+        "Remote command timed out after {} seconds.{reaped_note}\n\
          If the remote build is genuinely long (e.g. first compile of a \
          workspace), raise --timeout.",
         timeout.as_secs()
@@ -291,6 +302,64 @@ pub fn ssh_capture(
   }
 
   Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Marker every remote build step exports, and the handle
+/// [`reap_remote_work`] uses to find that step's processes afterwards.
+pub const JOB_ENV: &str = "RCARGO_JOB=1";
+
+/// Reap orphaned remote build work and report how many processes were
+/// signalled.
+///
+/// Killing the local `ssh` child does not kill the remote command. A step
+/// that times out, or an rcargo that is killed, leaves `cargo`, `rustc`
+/// and the test binaries running against the remote tree — and the lock
+/// guards that tree, not the process that held it. So reclaiming a stale
+/// lock is only safe once this has run.
+///
+/// Orphans are matched by environment, not by command line. Each step
+/// exports [`JOB_ENV`] and its children inherit it, so the set is exactly
+/// the build work a step started. A command-line match cannot make that
+/// distinction: a cargo step and a binary started by `rcargo start` both
+/// name the same project path, and killing the second one is wrong.
+///
+/// `/proc`-based, so Linux remotes only: where `/proc` is absent nothing
+/// can be swept, and the caller is told so instead of assuming the tree
+/// is idle.
+pub fn reap_remote_work(host: &str) -> usize {
+  let find = format!(
+    "if [ ! -d /proc ]; then echo NO_PROC; exit 0; fi\n\
+     for f in /proc/[0-9]*/environ; do \
+     if tr '\\000' '\\n' < \"$f\" 2>/dev/null | grep -q '^{marker}$'; \
+     then printf '%s\\n' \"$(basename \"$(dirname \"$f\")\")\"; fi; \
+     done",
+    marker = JOB_ENV,
+  );
+  let found = ssh_capture(host, &find).unwrap_or_default();
+  if found.trim() == "NO_PROC" {
+    eprintln!(
+      "Cannot verify orphaned remote work on {host}: it has no /proc, \
+       so its build processes cannot be matched. The tree may not be \
+       idle."
+    );
+    return 0;
+  }
+  let pids: Vec<&str> = found
+    .lines()
+    .map(str::trim)
+    .filter(|l| !l.is_empty())
+    .collect();
+  if pids.is_empty() {
+    return 0;
+  }
+  // SIGTERM, not SIGKILL: a build that can clean up should. Callers wait
+  // on the lock, not on the tree being idle this instant.
+  let joined = pids.join(" ");
+  let _ = ssh_capture(
+    host,
+    &format!("kill -TERM {joined} 2>/dev/null; true"),
+  );
+  pids.len()
 }
 
 /// Run a command on the remote via SSH, capturing stdout, with a
