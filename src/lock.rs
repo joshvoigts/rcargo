@@ -54,6 +54,44 @@ pub fn unlock(host: &str, home: &str) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
+/// Report the remote lock state without taking it.
+///
+/// Read-only counterpart to [`unlock`]: prints whether the shared
+/// per-host build lock is held, naming the owner's PID when it is
+/// meaningful, so the user can decide whether `rcargo unlock` is safe —
+/// without risk of killing a live process.
+pub fn status(host: &str, home: &str) -> Result<(), Box<dyn Error>> {
+  let path = lock_path(home);
+  let quoted = ssh::shell_quote(&path);
+
+  // `test -d` exits non-zero when the lock directory is absent, which
+  // ssh_capture reports as an error — i.e. the lock is free.
+  if !ssh::ssh_capture(host, &format!("test -d {quoted}"))
+    .is_ok_and(|_| true)
+  {
+    println!("Remote lock: free");
+    return Ok(());
+  }
+
+  let holder_q = ssh::shell_quote(&holder_path(home));
+  let holder =
+    ssh::ssh_capture(host, &format!("cat {holder_q} 2>/dev/null"))
+      .unwrap_or_default();
+  match holder.trim().parse::<u32>().ok() {
+    Some(pid) if is_live_rcargo(pid) => println!(
+      "Remote lock: held by rcargo PID {pid} on this machine",
+      pid = pid,
+    ),
+    Some(pid) => println!(
+      "Remote lock: held by rcargo PID {pid} (not running here — \
+       possibly stale, or owned by another machine)",
+      pid = pid,
+    ),
+    None => println!("Remote lock: held (no live owner recorded)"),
+  }
+  Ok(())
+}
+
 /// Whether a local PID currently refers to a running rcargo process.
 ///
 /// `ps -o comm=` reports a path on macOS and a name on Linux, so compare

@@ -181,6 +181,7 @@ fn run() -> Result<(), Box<dyn Error>> {
       deploy::undeploy(&cfg, &remote_path, &home, &bin_name)?;
     }
     Command::Status => {
+      lock::status(&cfg.target, &home)?;
       server::status_server(&cfg.target, &remote_path, &bin_name)?;
     }
     Command::Test { args } => {
