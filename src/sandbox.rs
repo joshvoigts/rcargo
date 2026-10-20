@@ -92,6 +92,11 @@ fn sandbox_cmd(
     .iter()
     .map(|(k, v)| format!("export {k}={}", shell_quote(v)))
     .collect();
+  // nono denies the global/system git config (~/.gitconfig, /etc/gitconfig),
+  // breaking in-sandbox git ops. Pin git to built-in defaults; allowlisting
+  // those files would leak host credentials and insteadOf rewrites.
+  env_vars.push("export GIT_CONFIG_NOSYSTEM=1".into());
+  env_vars.push("export GIT_CONFIG_GLOBAL=/dev/null".into());
   let color = if io::stdout().is_terminal() {
     "always"
   } else {
